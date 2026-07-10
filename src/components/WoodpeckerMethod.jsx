@@ -1,30 +1,8 @@
-import React, { useState } from 'react';
+// src/WoodpeckerMethod.jsx
+import React, { useState, useEffect } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
-
-const woodpeckerPuzzles = [
-  {
-    id: 1,
-    title: "Exercise 1: Carl Hamppe - Wilhelm Steinitz",
-    fen: "r6r/1pp3k1/1b6/p2P1p2/P1N1pn2/2P2PP1/2P2PP1/4RR1K b - - 0 1",
-    solution: ["Rxh2+", "Kxh2", "Rh8#"],
-    description: "Black to move. Find the forced checkmate sequence!"
-  },
-  {
-    id: 2,
-    title: "Exercise 2: Wilhelm Steinitz - J. Wilson",
-    fen: "rnb3kr/ppp4p/3b3B/3Pp2n/2BP4/3K1Rp1/PPP3q1/RN1Q4 w - - 0 1",
-    solution: ["Rf8+", "Bxf8", "d6+", "Be6", "Bxe6#"],
-    description: "White to move. Hunt the enemy king down!"
-  },
-  {
-    id: 3,
-    title: "Exercise 3: Wilhelm Steinitz - Serafino Dubois",
-    fen: "r2q1rk1/pppb1ppp/3b3B/4p1P1/4Pn2/2N1B2P/PPPQBP2/2KR3R w - - 0 1",
-    solution: ["Bxf4", "exf4", "e5"],
-    description: "White to move. Take advantage of the pinned piece on d6!"
-  }
-];
+import { woodpeckerPuzzles } from '../data/woodpeckerPuzzles';
 
 const WoodpeckerMethod = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -32,33 +10,58 @@ const WoodpeckerMethod = () => {
 
   const [game, setGame] = useState(new Chess(currentPuzzle.fen));
   const [moveIndex, setMoveIndex] = useState(0);
+  const [displayHint, setDisplayHint] = useState("");
+  const [showFullSolution, setShowFullSolution] = useState(false);
+
+  useEffect(() => {
+    setGame(new Chess(currentPuzzle.fen));
+    setMoveIndex(0);
+    setDisplayHint("");
+    setShowFullSolution(false);
+  }, [currentIndex, currentPuzzle.fen]);
+
+  const safeInitEngine = (fenString) => {
+    try {
+      if (!fenString || typeof fenString !== 'string') {
+        return new Chess();
+      }
+      return new Chess(fenString);
+    } catch (e) {
+      console.error("Format runtime error caught on FEN rendering:", e.message);
+      return new Chess(); 
+    }
+  };
 
   const onDrop = (sourceSquare, targetSquare) => {
+    if (showFullSolution) return false;
+
     try {
       const gameCopy = new Chess(game.fen());
-      
       const move = gameCopy.move({
         from: sourceSquare,
         to: targetSquare,
-        promotion: 'q'
+        promotion: 'q',
       });
 
       if (move === null) return false;
 
-      const correctMoveSAN = currentPuzzle.solution[moveIndex];
-      
-      if (move.san === correctMoveSAN || move.lan === correctMoveSAN) {
+      // Validate move notation with solution array tracking
+      const expectedMove = currentPuzzle.solution[moveIndex];
+
+      if (move.san === expectedMove || move.lan === expectedMove) {
         setGame(gameCopy);
-        
         const nextMoveIndex = moveIndex + 1;
+
+        // Auto-reply logic simulating defensive tactical lines
         if (nextMoveIndex < currentPuzzle.solution.length) {
+          setMoveIndex(nextMoveIndex);
           setTimeout(() => {
             gameCopy.move(currentPuzzle.solution[nextMoveIndex]);
             setGame(new Chess(gameCopy.fen()));
             setMoveIndex(nextMoveIndex + 1);
-          }, 600);
+          }, 500);
         } else {
-          alert("🎉 Excellent! Puzzle Solved Successfully.");
+          alert("🎉 Spectacular! Puzzle Solved Correctly.");
         }
         return true;
       } else {
@@ -69,22 +72,45 @@ const WoodpeckerMethod = () => {
     }
   };
 
-  const nextPuzzle = () => {
+  const handleNext = () => {
     if (currentIndex < woodpeckerPuzzles.length - 1) {
-      const nextIdx = currentIndex + 1;
-      setCurrentIndex(nextIdx);
-      setGame(new Chess(woodpeckerPuzzles[nextIdx].fen));
-      setMoveIndex(0);
+      setCurrentIndex((prev) => prev + 1);
     }
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', color: '#fff', padding: '20px' }}>
-      <h2>🪵 Woodpecker Method Trainer</h2>
-      <h3>{currentPuzzle.title}</h3>
-      <p style={{ color: '#aaa', fontStyle: 'italic' }}>{currentPuzzle.description}</p>
+  const handlePrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+    }
+  };
 
-      <div style={{ width: '100%', maxWidth: '450px' }}>
+  const handleRevealSolution = () => {
+    setShowFullSolution(true);
+    const fullGameEngine = new Chess(currentPuzzle.fen);
+    let step = 0;
+
+    const interval = setInterval(() => {
+      if (step < currentPuzzle.solution.length) {
+        fullGameEngine.move(currentPuzzle.solution[step]);
+        setGame(new Chess(fullGameEngine.fen()));
+        step++;
+        setMoveIndex(step);
+      } else {
+        clearInterval(interval);
+      }
+    }, 700);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
+      <h2 style={{ margin: 0, color: '#f39c12' }}>🪵 Woodpecker Training Mode</h2>
+      <h3 style={{ margin: '5px 0' }}>{currentPuzzle.title}</h3>
+      <p style={{ color: '#aaa', fontSize: '14px', maxWidth: '450px', textAlign: 'center', margin: '0 0 10px 0' }}>
+        {currentPuzzle.description}
+      </p>
+
+      {/* Chessboard Card Container */}
+      <div style={{ width: '100%', maxWidth: '450px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', borderRadius: '8px', overflow: 'hidden' }}>
         <Chessboard 
           position={game.fen()} 
           onPieceDrop={onDrop}
@@ -93,23 +119,56 @@ const WoodpeckerMethod = () => {
         />
       </div>
 
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <button 
-          onClick={() => { setGame(new Chess(currentPuzzle.fen)); setMoveIndex(0); }}
-          style={{ padding: '8px 16px', backgroundColor: '#e74c3c', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Retry
+      {/* Interactive Navigation Panel */}
+      <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+        <button onClick={handlePrevious} disabled={currentIndex === 0} style={btnStyle('#34495e', currentIndex === 0)}>
+          ⬅️ Prev
         </button>
-        <button 
-          onClick={nextPuzzle}
-          disabled={currentIndex === woodpeckerPuzzles.length - 1}
-          style={{ padding: '8px 16px', backgroundColor: '#2ecc71', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Next Exercise ➡️
+        <button onClick={() => { setGame(new Chess(currentPuzzle.fen)); setMoveIndex(0); setDisplayHint(""); setShowFullSolution(false); }} style={btnStyle('#e74c3c')}>
+          🔄 Retry
+        </button>
+        <button onClick={handleNext} disabled={currentIndex === woodpeckerPuzzles.length - 1} style={btnStyle('#34495e', currentIndex === woodpeckerPuzzles.length - 1)}>
+          Next ➡️
         </button>
       </div>
+
+      {/* Tactical Helper Panel */}
+      <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+        <button onClick={() => setDisplayHint(currentPuzzle.hint)} style={btnStyle('#9b59b6')}>
+          💡 Get Hint
+        </button>
+        <button onClick={handleRevealSolution} style={btnStyle('#27ae60')}>
+          👁️ Reveal Solution
+        </button>
+      </div>
+
+      {/* Display messages contextually */}
+      {displayHint && (
+        <div style={{ padding: '10px', backgroundColor: '#2c3e50', borderRadius: '5px', maxWidth: '450px', textAlign: 'center', borderLeft: '4px solid #9b59b6' }}>
+          <strong>Hint:</strong> {displayHint}
+        </div>
+      )}
+
+      {showFullSolution && (
+        <div style={{ padding: '10px', backgroundColor: '#1e272c', borderRadius: '5px', color: '#2ecc71', fontSize: '14px' }}>
+          Showing step-by-step mainline sequence: <strong>{currentPuzzle.solution.join(' -> ')}</strong>
+        </div>
+      )}
     </div>
   );
 };
+
+// Reusable micro UI button styles
+const btnStyle = (color, disabled = false) => ({
+  padding: '10px 18px',
+  backgroundColor: disabled ? '#7f8c8d' : color,
+  color: '#fff',
+  border: 'none',
+  borderRadius: '4px',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  fontWeight: 'bold',
+  fontSize: '14px',
+  transition: 'background-color 0.2s'
+});
 
 export default WoodpeckerMethod;
