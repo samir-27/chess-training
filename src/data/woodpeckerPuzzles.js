@@ -1,5 +1,13 @@
 export const woodpeckerPuzzles = [
   {
+    "id": 1,
+    "title": "Exercise 1: Carl Hamppe - Wilhelm Steinitz (Vienna 1860)",
+    "fen": "r6r/1pp3k1/1b6/p2P1p2/P1N1pn2/2P2P2/2P2PPP/4RR1K b - - 0 1",
+    "solution": ["Rxh2+", "Kxh2", "Rh8#"],
+    "description": "Black to move. Find the famous forced checkmate sequence!",
+    "hint": "Think about sacrificing material on h2 to open up the back-rank h-file."
+  },
+  {
     "id": 2,
     "title": "Exercise 2: 4) Easy Exercises - Exercise 2",
     "fen": "rnb3kr/ppp4p/3b3B/3Pp2n/2BP4/3K1Rp1/PPP3q1/RN1Q4 w - - 0 1",
