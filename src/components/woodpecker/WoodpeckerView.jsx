@@ -15,7 +15,11 @@ import {
   TrendingDown,
   TrendingUp,
   BarChart3,
-  Check
+  Check,
+  BookOpen,
+  Brain,
+  Sparkles,
+  X
 } from 'lucide-react';
 import { storage } from '../../services/storageService.js';
 import { compareWoodpeckerCycles } from '../../services/analyticsService.js';
@@ -24,6 +28,7 @@ export default function WoodpeckerView({ onStartTraining }) {
   const [cycles, setCycles] = useState(() => storage.getAllCycles());
   const [activeCycle, setActiveCycle] = useState(() => storage.getActiveCycle());
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('easy'); // 'easy' | 'all' | 'intermediate' | 'advanced'
   const [targetDays, setTargetDays] = useState(14);
   const [cycleName, setCycleName] = useState('');
@@ -130,13 +135,23 @@ export default function WoodpeckerView({ onStartTraining }) {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:brightness-110 transition-all self-start sm:self-center"
-        >
-          <Plus size={16} />
-          <span>New Cycle</span>
-        </button>
+        <div className="flex items-center gap-2.5 self-start sm:self-center">
+          <button
+            onClick={() => setShowGuideModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-semibold transition-all shadow-sm"
+          >
+            <BookOpen size={15} className="text-amber-400" />
+            <span>How Woodpecker Works</span>
+          </button>
+
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:brightness-110 transition-all"
+          >
+            <Plus size={16} />
+            <span>New Cycle</span>
+          </button>
+        </div>
       </div>
 
       {/* Active Cycle Card */}
@@ -349,6 +364,165 @@ export default function WoodpeckerView({ onStartTraining }) {
           </div>
         )}
       </div>
+
+      {/* About The Woodpecker Method Modal Dialog (Shown only when user clicks How Woodpecker Works) */}
+      {showGuideModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#0F1424] border border-slate-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 lg:p-6 border-b border-slate-800/80 bg-[#111728] shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <BookOpen size={20} />
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-tight">How the Woodpecker Method Works</h2>
+                  <p className="text-xs text-slate-400">The science of spaced repetition by GM Hans Tikkanen & GM Axel Smith</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowGuideModal(false)}
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-colors"
+                title="Close guide"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="p-6 lg:p-8 overflow-y-auto space-y-6">
+              
+              {/* Method Hero Banner */}
+              <div className="bg-gradient-to-br from-[#12192d] via-[#0e1424] to-[#0a0e19] border border-amber-500/30 rounded-3xl p-6 lg:p-8 shadow-2xl relative overflow-hidden">
+                <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
+
+                <div className="space-y-3 max-w-3xl relative z-10">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-xs font-semibold uppercase tracking-wider">
+                    <Sparkles size={14} />
+                    <span>The Science of Spaced Repetition</span>
+                  </div>
+
+                  <h3 className="text-2xl font-extrabold text-white tracking-tight">
+                    What is the Woodpecker Method?
+                  </h3>
+
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    The Woodpecker Method is an intensive, repetition-based chess tactical training regimen developed by Swedish Grandmaster <strong className="text-white">Hans Tikkanen</strong> and Grandmaster <strong className="text-white">Axel Smith</strong>. By solving the same curated set of tactical puzzles repeatedly over shortening time intervals, you train your brain to recognize tactical motifs <strong className="text-amber-400">instantly and subconsciously</strong>.
+                  </p>
+                </div>
+              </div>
+
+              {/* The Story & Automaticity */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <Trophy size={18} />
+                    </div>
+                    <h4 className="text-base font-bold text-white tracking-tight">The 3 GM Norms in 7 Weeks</h4>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    In spring 2010, International Master Hans Tikkanen had hit a competitive plateau. Despite years of heavy calculation training, blunders in time pressure were costing him critical tournament games.
+                  </p>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    He committed to this repetitive method, solving 1,000 exercises across accelerated cycles. The following summer, Tikkanen achieved <strong className="text-amber-400">all 3 Grandmaster norms and surpassed 2500 within just 7 weeks</strong>, peaking at 2601 FIDE live rating. His co-author, GM Axel Smith, used it to complete his own final GM norm.
+                  </p>
+                </div>
+
+                <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <Brain size={18} />
+                    </div>
+                    <h4 className="text-base font-bold text-white tracking-tight">The Core Philosophy: Automaticity</h4>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Grandmaster vision is not based on brute-forcing 20 moves deep in every position. Cognitive science proves that masters rely on subconscious "chunks" and rapid tactical pattern recognition.
+                  </p>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    By drilling tactical motifs until you can solve them in seconds, you liberate conscious working memory. When patterns flash into your intuition automatically, you eliminate calculation fatigue and practical time trouble.
+                  </p>
+                </div>
+              </div>
+
+              {/* The 7-Cycle Halving Schedule */}
+              <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4">
+                <div>
+                  <div className="text-xs font-mono uppercase tracking-widest text-amber-500 font-semibold mb-1">
+                    Program Roadmap
+                  </div>
+                  <h4 className="text-base font-bold text-white tracking-tight">
+                    The 7-Cycle Time-Halving Schedule
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Select your puzzle set (such as Easy 222 or the full master corpus) and halve your target time on every cycle pass.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-mono">
+                  <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <div className="flex justify-between items-center text-amber-400 font-bold">
+                      <span>CYCLE 1</span>
+                      <span className="text-[10px] text-slate-500">~28 Days</span>
+                    </div>
+                    <div className="font-sans font-bold text-white text-xs">The Foundation Pass</div>
+                    <div className="font-sans text-[11px] text-slate-400">
+                      Solve every puzzle with careful calculation. Do not guess moves.
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <div className="flex justify-between items-center text-sky-400 font-bold">
+                      <span>CYCLE 2</span>
+                      <span className="text-[10px] text-slate-500">~14 Days</span>
+                    </div>
+                    <div className="font-sans font-bold text-white text-xs">Speed Halving</div>
+                    <div className="font-sans text-[11px] text-slate-400">
+                      Re-solve the exact same puzzles in half the time. Recognizing motifs faster.
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <div className="flex justify-between items-center text-emerald-400 font-bold">
+                      <span>CYCLE 3</span>
+                      <span className="text-[10px] text-slate-500">~7 Days</span>
+                    </div>
+                    <div className="font-sans font-bold text-white text-xs">Pattern Consolidation</div>
+                    <div className="font-sans text-[11px] text-slate-400">
+                      Subconscious triggers begin clicking into place instantly.
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <div className="flex justify-between items-center text-rose-400 font-bold">
+                      <span>CYCLE 4–7</span>
+                      <span className="text-[10px] text-slate-500">1–3 Days</span>
+                    </div>
+                    <div className="font-sans font-bold text-white text-xs">Grandmaster Reflexes</div>
+                    <div className="font-sans text-[11px] text-slate-400">
+                      Solving the entire set in 24–48 hours with near 100% accuracy.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 px-6 border-t border-slate-800 bg-[#111728] flex items-center justify-end shrink-0">
+              <button
+                onClick={() => setShowGuideModal(false)}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 hover:brightness-110 transition-all"
+              >
+                Got It, Back to Cycles
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Create Cycle Modal */}
       {showCreateModal && (

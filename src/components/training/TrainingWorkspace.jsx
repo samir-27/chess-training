@@ -425,6 +425,16 @@ export default function TrainingWorkspace({
         
         {/* Left: The Chessboard */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col items-center">
+          {/* Turn Indicator outside the board */}
+          <div className="w-full max-w-[540px] flex items-center justify-start mb-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono">
+              <span className={`w-2.5 h-2.5 rounded-full ${game.turn() === 'w' ? 'bg-amber-100 ring-2 ring-amber-400' : 'bg-slate-950 ring-2 ring-slate-400'}`} />
+              <span className="text-slate-200 font-bold uppercase tracking-wide">
+                {game.turn() === 'w' ? 'White to Move' : 'Black to Move'}
+              </span>
+            </div>
+          </div>
+
           <div className="w-full max-w-[540px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800/90 relative bg-slate-900">
             <Chessboard
               position={game.fen()}
@@ -436,14 +446,6 @@ export default function TrainingWorkspace({
               animationDuration={250}
               arePiecesDraggable={!isSolved && !isRevealing}
             />
-
-            {/* Turn Indicator Badge on Board */}
-            <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-slate-950/85 backdrop-blur-md border border-slate-800 text-[11px] font-mono font-medium flex items-center gap-1.5 shadow-lg">
-              <span className={`w-2 h-2 rounded-full ${game.turn() === 'w' ? 'bg-amber-100 ring-2 ring-amber-400' : 'bg-slate-900 ring-2 ring-slate-400'}`} />
-              <span className="text-slate-300">
-                {game.turn() === 'w' ? 'White to Move' : 'Black to Move'}
-              </span>
-            </div>
           </div>
         </div>
 

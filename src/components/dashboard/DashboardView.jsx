@@ -5,33 +5,28 @@ import {
   Trophy,
   Clock,
   Play,
-  BookOpen,
   Zap,
+  Activity,
+  BarChart3,
   ArrowRight,
-  CheckCircle2,
-  AlertCircle,
   Sparkles,
-  Calendar,
-  Layers,
-  Award
+  Calendar
 } from 'lucide-react';
 import { storage } from '../../services/storageService.js';
-import { getOverallStats, getRecommendations } from '../../services/analyticsService.js';
+import { getOverallStats } from '../../services/analyticsService.js';
 
 export default function DashboardView({
-  onSelectCourse,
   onStartTraining,
   onNavigateWoodpecker,
-  onNavigateLibrary
+  onNavigateAnalysis,
+  onNavigateAnalytics
 }) {
   const [stats, setStats] = useState(() => getOverallStats());
-  const [recommendations, setRecommendations] = useState(() => getRecommendations());
   const [courses, setCourses] = useState(() => storage.getAllCourses());
   const [allProgress, setAllProgress] = useState(() => storage.getAllProgress());
 
   const refreshDashboard = () => {
     setStats(getOverallStats());
-    setRecommendations(getRecommendations());
     setCourses(storage.getAllCourses());
     setAllProgress(storage.getAllProgress());
   };
@@ -58,7 +53,9 @@ export default function DashboardView({
         const nextId = stats.activeCycle.puzzleIds.find(id => !completedSet.has(String(id))) || stats.activeCycle.puzzleIds[0];
         for (const ch of course.chapters) {
           const les = ch.lessons.find(l => String(l.id) === String(nextId));
-          if (les) return { course, chapter: ch, lesson: les, cycleId: stats.activeCycle.id, label: stats.activeCycle.name };
+          if (les) {
+            return { course, chapter: ch, lesson: les, cycleId: stats.activeCycle.id, label: stats.activeCycle.name };
+          }
         }
       }
     }
@@ -83,22 +80,29 @@ export default function DashboardView({
   const handleResumeClick = () => {
     if (resumeTarget) {
       onStartTraining(resumeTarget);
+    } else {
+      onNavigateWoodpecker();
     }
   };
 
+  const solvedCyclePuzzles = stats.activeCycle
+    ? Object.values(stats.activeCycle.completedPuzzles || {}).filter(p => p.isSolved).length
+    : 0;
+  const totalCyclePuzzles = stats.activeCycle?.puzzleIds?.length || 0;
+  const cyclePercent = totalCyclePuzzles > 0 ? Math.round((solvedCyclePuzzles / totalCyclePuzzles) * 100) : 0;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8 animate-fadeIn">
       
-      {/* Top Hero Banner: What Should I Train Today? */}
+      {/* Top Hero Banner */}
       <div className="bg-gradient-to-br from-[#12192d] via-[#0e1424] to-[#0a0e19] border border-amber-500/30 rounded-3xl p-6 lg:p-8 shadow-2xl relative overflow-hidden">
-        {/* Glow flare */}
         <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-xs font-semibold uppercase tracking-wider">
               <Sparkles size={14} />
-              <span>Personalized Tactical Regimen</span>
+              <span>Chess Wizards Hub</span>
             </div>
 
             <h1 className="text-2xl lg:text-4xl font-extrabold text-white tracking-tight">
@@ -107,8 +111,8 @@ export default function DashboardView({
 
             <p className="text-sm text-slate-300 leading-relaxed">
               {stats.activeCycle
-                ? `You're currently in ${stats.activeCycle.name}. Keep up the momentum to halve your tactical response time.`
-                : 'Solve daily tactical puzzles to build subconscious pattern recognition and reduce blunders in your practical games.'}
+                ? `You're currently in ${stats.activeCycle.name}. Keep solving to halve your tactical response time.`
+                : 'Accelerate your pattern recognition with the Woodpecker Method, analyze your games, and track consistency.'}
             </p>
 
             {/* Quick Today Progress Strip */}
@@ -130,15 +134,14 @@ export default function DashboardView({
             </div>
           </div>
 
-          {/* Primary Call-to-Action */}
+          {/* Direct Resume Action */}
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <button
               onClick={handleResumeClick}
-              disabled={!resumeTarget}
-              className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/25 hover:brightness-110 transition-all group disabled:opacity-50"
+              className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/25 hover:brightness-110 transition-all group"
             >
               <Play size={20} className="fill-current group-hover:scale-110 transition-transform" />
-              <span>Continue Training</span>
+              <span>Resume Woodpecker</span>
             </button>
           </div>
         </div>
@@ -146,7 +149,6 @@ export default function DashboardView({
 
       {/* KPI Stats Bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        
         <div className="bg-[#111728] border border-slate-800/80 rounded-2xl p-5 shadow-xl">
           <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
             <span>Daily Streak</span>
@@ -175,7 +177,7 @@ export default function DashboardView({
 
         <div className="bg-[#111728] border border-slate-800/80 rounded-2xl p-5 shadow-xl">
           <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Accuracy</span>
+            <span>Solving Accuracy</span>
             <Trophy size={18} className="text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-white tracking-tight">
@@ -188,218 +190,94 @@ export default function DashboardView({
 
         <div className="bg-[#111728] border border-slate-800/80 rounded-2xl p-5 shadow-xl">
           <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Woodpecker</span>
+            <span>Woodpecker Cycle</span>
             <Zap size={18} className="text-rose-400" />
           </div>
           <div className="text-2xl font-bold text-white tracking-tight">
             {stats.activeCycle ? `Cycle #${stats.activeCycle.cycleNumber}` : 'Ready'}
           </div>
           <div className="text-[11px] text-slate-500 font-mono mt-1">
-            {stats.activeCycle ? `${Object.keys(stats.activeCycle.completedPuzzles || {}).length} solved` : 'Start a cycle'}
+            {stats.activeCycle ? `${solvedCyclePuzzles} / ${totalCyclePuzzles} (${cyclePercent}%)` : 'Ready to start'}
           </div>
         </div>
-
       </div>
 
-      {/* Grid: Recommended Daily Action & Resume Position */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column: Smart Recommendations (8 cols) */}
-        <div className="lg:col-span-8 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white tracking-tight">
-              Recommended Daily Tasks
-            </h2>
-            <span className="text-xs font-mono text-slate-500">Deterministic Guidance</span>
-          </div>
-
-          <div className="space-y-3">
-            {recommendations.length === 0 ? (
-              <div className="bg-[#111728] border border-slate-800/80 rounded-2xl p-6 text-center text-xs text-slate-400">
-                No incomplete tasks pending! Explore your course library to begin a new study module.
-              </div>
-            ) : (
-              recommendations.map((rec, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => {
-                    const course = storage.getCourseById(rec.courseId);
-                    if (course) {
-                      const ch = course.chapters.find(c => c.id === rec.chapterId) || course.chapters[0];
-                      const les = ch?.lessons.find(l => l.id === rec.lessonId) || ch?.lessons[0];
-                      if (les) onStartTraining({ course, chapter: ch, lesson: les });
-                    }
-                  }}
-                  className="bg-[#111728] border border-slate-800/80 hover:border-slate-700 rounded-2xl p-4 flex items-center justify-between cursor-pointer transition-all hover:-translate-y-0.5 group shadow-lg"
-                >
-                  <div className="flex items-center gap-3.5">
-                    <div className={`p-2.5 rounded-xl border ${
-                      rec.type === 'woodpecker'
-                        ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                        : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                    }`}>
-                      {rec.type === 'woodpecker' ? <Zap size={18} /> : <BookOpen size={18} />}
-                    </div>
-
-                    <div>
-                      <div className="text-sm font-bold text-white group-hover:text-amber-400 transition-colors">
-                        {rec.title}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5">{rec.subtitle}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 group-hover:text-white">
-                    <span>Train</span>
-                    <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Active Woodpecker Quick Card (4 cols) */}
-        <div className="lg:col-span-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white tracking-tight">
-              Woodpecker Status
-            </h2>
-            <button
-              onClick={onNavigateWoodpecker}
-              className="text-xs font-semibold text-amber-400 hover:text-amber-300"
-            >
-              Manage Cycles
-            </button>
-          </div>
-
-          <div className="bg-[#111728] border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-4">
-            {stats.activeCycle ? (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono text-amber-400 font-bold uppercase">
-                    {stats.activeCycle.name}
-                  </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
-                    Active
-                  </span>
-                </div>
-
-                {(() => {
-                  const solved = Object.values(stats.activeCycle.completedPuzzles || {}).filter(p => p.isSolved).length;
-                  const total = stats.activeCycle.puzzleIds.length;
-                  const pct = total > 0 ? Math.round((solved / total) * 100) : 0;
-                  return (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs font-mono">
-                        <span className="text-slate-400">Puzzles Solved</span>
-                        <span className="text-white font-bold">{solved} / {total}</span>
-                      </div>
-                      <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
-                        <div
-                          className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-500"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <button
-                  onClick={onNavigateWoodpecker}
-                  className="w-full py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 hover:text-white hover:border-slate-700 text-xs font-semibold transition-all"
-                >
-                  View Cycle Details
-                </button>
-              </>
-            ) : (
-              <div className="text-center py-4 space-y-3">
-                <Zap size={28} className="text-amber-400 mx-auto" />
-                <div className="text-xs text-slate-400">
-                  No active Woodpecker cycle. Launch Cycle 1 to track speed halving!
-                </div>
-                <button
-                  onClick={onNavigateWoodpecker}
-                  className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition-colors"
-                >
-                  Configure Cycle
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* Woodpecker Chapters Overview Strip */}
+      {/* Primary 3 Direct Action Hub: Woodpecker | Game Analysis | Analytics */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Woodpecker Chapters</h2>
-            <p className="text-xs text-slate-400">1,131 exercises organized by Grandmasters Axel Smith & Hans Tikkanen.</p>
+            <h2 className="text-lg font-bold text-white tracking-tight">Quick Actions</h2>
+            <p className="text-xs text-slate-400">Directly resume training, analyze a game, or review statistics.</p>
           </div>
-          <button
-            onClick={onNavigateLibrary}
-            className="text-xs font-semibold text-amber-400 hover:text-amber-300"
-          >
-            Browse Chapters & Exercises
-          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {(() => {
-            const woodpecker = storage.getCourseById('course-woodpecker-method') || courses[0];
-            if (!woodpecker?.chapters) return null;
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          {/* Action 1: Resume Woodpecker Method */}
+          <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-amber-500/40 transition-all space-y-4">
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+                <Zap size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-white tracking-tight">The Woodpecker Method</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {stats.activeCycle
+                  ? `Active: ${stats.activeCycle.name} • ${solvedCyclePuzzles}/${totalCyclePuzzles} puzzles solved (${cyclePercent}%).`
+                  : 'Spaced repetition tactical mastery. Halve your solving time with every cycle iteration to build subconscious reflexes.'}
+              </p>
+            </div>
 
-            return woodpecker.chapters.map(ch => {
-              const prog = allProgress[woodpecker.id]?.completedLessons || {};
-              const total = ch.lessons?.length || 0;
-              const solved = ch.lessons.filter(l => prog[l.id]?.solved).length;
-              const pct = total > 0 ? Math.round((solved / total) * 100) : 0;
+            <button
+              onClick={handleResumeClick}
+              className="flex items-center justify-between w-full px-4 py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all"
+            >
+              <span>{stats.activeCycle ? 'Resume Active Cycle' : 'Start Woodpecker Cycle'}</span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
 
-              return (
-                <div
-                  key={ch.id}
-                  onClick={() => {
-                    const firstUnsolved = ch.lessons.find(l => !prog[l.id]?.solved) || ch.lessons[0];
-                    if (firstUnsolved) {
-                      onStartTraining({ course: woodpecker, chapter: ch, lesson: firstUnsolved });
-                    }
-                  }}
-                  className="bg-[#111728] border border-slate-800/80 hover:border-slate-700 rounded-2xl p-5 cursor-pointer transition-all hover:-translate-y-0.5 group shadow-xl flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-amber-400 font-bold">
-                        {ch.title.split(' ')[0]} Section
-                      </span>
-                      <span className="text-xs font-mono text-slate-500">{total} Puzzles</span>
-                    </div>
+          {/* Action 2: Game Analysis */}
+          <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-sky-500/40 transition-all space-y-4">
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center">
+                <Activity size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-white tracking-tight">Game Analysis & Review</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Paste any chess PGN to review move-by-move accuracy, multi-PV engine candidate lines, and blunder classification powered by Lichess Cloud API.
+              </p>
+            </div>
 
-                    <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors line-clamp-1">
-                      {ch.title}
-                    </h3>
-                    <div className="text-xs text-slate-400 mt-1 mb-4 line-clamp-2">
-                      {ch.description}
-                    </div>
-                  </div>
+            <button
+              onClick={onNavigateAnalysis}
+              className="flex items-center justify-between w-full px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 text-sky-300 hover:text-white hover:border-sky-500/40 font-bold text-xs transition-all"
+            >
+              <span>Analyze Game PGN</span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
 
-                  <div className="space-y-2 pt-3 border-t border-slate-800/60">
-                    <div className="flex justify-between text-[11px] font-mono">
-                      <span className="text-slate-400">{solved} / {total} Complete</span>
-                      <span className="text-amber-400 font-bold">{pct}%</span>
-                    </div>
-                    <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
-                      <div
-                        className="bg-amber-400 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            });
-          })()}
+          {/* Action 3: Analytics & Heatmap */}
+          <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-emerald-500/40 transition-all space-y-4">
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                <BarChart3 size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-white tracking-tight">Analytics & Heatmap</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Inspect your GitHub-style activity contribution calendar, training streaks, accuracy progression curves, and tactical volume history.
+              </p>
+            </div>
+
+            <button
+              onClick={onNavigateAnalytics}
+              className="flex items-center justify-between w-full px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 text-emerald-300 hover:text-white hover:border-emerald-500/40 font-bold text-xs transition-all"
+            >
+              <span>View Analytics & Streaks</span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
+
         </div>
       </div>
 

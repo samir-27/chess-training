@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Settings,
   Flame,
+  Activity,
   Menu,
   X
 } from 'lucide-react';
@@ -16,11 +17,10 @@ import { getOverallStats } from '../../services/analyticsService.js';
 
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'woodpecker', label: 'Woodpecker Cycles', icon: Zap },
-  { id: 'training', label: 'Training Board', icon: Swords },
-  { id: 'library', label: 'Exercise Chapters', icon: BookOpen },
+  { id: 'woodpecker', label: 'Woodpecker Method', icon: Zap },
+  { id: 'analysis', label: 'Game Analysis', icon: Activity },
   { id: 'analytics', label: 'Analytics & Heatmap', icon: BarChart3 },
-  { id: 'about', label: 'About the Method', icon: HelpCircle },
+  { id: 'about_app', label: 'About the App', icon: HelpCircle },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -45,14 +45,14 @@ export default function AppShell({
           {/* Logo & Brand */}
           <div className="flex items-center gap-3 px-2 mb-8">
             <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center shadow-lg shadow-amber-500/20">
-              <span className="text-black font-black text-xl">🪵</span>
+              <span className="text-black font-black text-xl">🧙‍♂️</span>
             </div>
             <div>
               <span className="font-extrabold tracking-tight text-white block text-sm">
-                WOODPECKER
+                CHESS WIZARDS
               </span>
               <span className="text-[10px] text-amber-500 font-mono tracking-widest uppercase -mt-0.5 block">
-                METHOD TRAINER
+                TACTICS & ANALYSIS
               </span>
             </div>
           </div>
@@ -110,9 +110,9 @@ export default function AppShell({
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-xl bg-amber-500 flex items-center justify-center text-black font-black">
-                    🪵
+                    🧙‍♂️
                   </div>
-                  <span className="font-bold text-white text-sm">WOODPECKER METHOD</span>
+                  <span className="font-bold text-white text-sm">CHESS WIZARDS</span>
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
@@ -168,7 +168,7 @@ export default function AppShell({
             >
               <Menu size={20} />
             </button>
-            <span className="font-bold text-white text-sm">WOODPECKER METHOD</span>
+            <span className="font-bold text-white text-sm">CHESS WIZARDS</span>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono">

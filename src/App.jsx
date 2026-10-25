@@ -5,8 +5,9 @@ import CourseLibraryView from './components/library/CourseLibraryView.jsx';
 import TrainingWorkspace from './components/training/TrainingWorkspace.jsx';
 import WoodpeckerView from './components/woodpecker/WoodpeckerView.jsx';
 import AnalyticsView from './components/analytics/AnalyticsView.jsx';
-import AboutWoodpeckerView from './components/about/AboutWoodpeckerView.jsx';
+import AboutAppView from './components/about/AboutAppView.jsx';
 import SettingsView from './components/settings/SettingsView.jsx';
+import GameAnalysisView from './components/analysis/GameAnalysisView.jsx';
 import { storage } from './services/storageService.js';
 import './App.css';
 
@@ -129,18 +130,10 @@ export default function App() {
     <AppShell activeTab={activeTab} onTabChange={setActiveTab}>
       {activeTab === 'dashboard' && (
         <DashboardView
-          onSelectCourse={(course) => {
-            if (course.chapters[0]?.lessons[0]) {
-              handleStartTraining({
-                course,
-                chapter: course.chapters[0],
-                lesson: course.chapters[0].lessons[0]
-              });
-            }
-          }}
           onStartTraining={handleStartTraining}
           onNavigateWoodpecker={() => setActiveTab('woodpecker')}
-          onNavigateLibrary={() => setActiveTab('library')}
+          onNavigateAnalysis={() => setActiveTab('analysis')}
+          onNavigateAnalytics={() => setActiveTab('analytics')}
         />
       )}
 
@@ -156,7 +149,7 @@ export default function App() {
           chapter={trainingContext?.chapter}
           lesson={trainingContext?.lesson}
           cycleId={trainingContext?.cycleId}
-          onBack={() => setActiveTab('library')}
+          onBack={() => setActiveTab('woodpecker')}
           onNext={handleNextLesson}
           onPrev={handlePrevLesson}
           hasNext={hasNext}
@@ -164,30 +157,19 @@ export default function App() {
         />
       )}
 
-      {activeTab === 'library' && (
-        <CourseLibraryView
-          onSelectLesson={handleStartTraining}
-          onNavigateAbout={() => setActiveTab('about')}
-        />
+      {activeTab === 'analysis' && (
+        <GameAnalysisView />
       )}
 
       {activeTab === 'analytics' && (
         <AnalyticsView />
       )}
 
-      {activeTab === 'about' && (
-        <AboutWoodpeckerView
-          onStartCycle={() => setActiveTab('woodpecker')}
-          onStartTraining={() => {
-            const course = storage.getCourseById('course-woodpecker-method');
-            if (course?.chapters[0]?.lessons[0]) {
-              handleStartTraining({
-                course,
-                chapter: course.chapters[0],
-                lesson: course.chapters[0].lessons[0]
-              });
-            }
-          }}
+      {activeTab === 'about_app' && (
+        <AboutAppView
+          onNavigateWoodpecker={() => setActiveTab('woodpecker')}
+          onNavigateAnalysis={() => setActiveTab('analysis')}
+          onNavigateAnalytics={() => setActiveTab('analytics')}
         />
       )}
 
