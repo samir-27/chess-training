@@ -1,12 +1,12 @@
 /**
  * Chess Game Analysis Engine
- * Powered by Lichess Cloud Evaluation & Public Stockfish APIs.
+ * Primary analysis uses the bundled local Stockfish UCI engine.
  * Evaluates games move-by-move, classifies each move into Lichess standard categories,
  * generates 2-3 engine continuation lines, ACPL, and accuracy.
  */
 
 import { Chess } from 'chess.js';
-import { evaluatePositionOnline } from './lichessAnalysisApi.js';
+import { StockfishEngine, STOCKFISH_SEARCH } from './stockfishEngine.js';
 
 // Move Classification Types
 export const Classification = {
@@ -173,39 +173,6 @@ const KING_PST_MID = [
 ];
 
 /**
- * Standard Opening Book line prefixes
- */
-const OPENING_BOOK_MOVES = new Set([
-  'e4', 'e4 e5', 'e4 e5 Nf3', 'e4 e5 Nf3 Nc6', 'e4 e5 Nf3 Nc6 Bb5', 'e4 e5 Nf3 Nc6 Bc4', 'e4 e5 Nf3 Nc6 d4',
-  'e4 e5 Nf3 Nf6', 'e4 e5 f4', 'e4 e5 Nc3', 'e4 e5 d4',
-  'e4 e6', 'e4 e6 d4', 'e4 e6 d4 d5', 'e4 e6 d4 d5 Nc3', 'e4 e6 d4 d5 Nd2', 'e4 e6 d4 d5 e5', 'e4 e6 d4 d5 exd5',
-  'e4 e6 f4', 'e4 e6 f4 d5', 'e4 e6 f4 d5 Nf3', 'e4 e6 f4 d5 Nf3 c5', 'e4 e6 f4 d5 Nf3 c5 exd5', 'e4 e6 f4 d5 Nf3 c5 exd5 exd5',
-  'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4', 'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4 cxd4', 'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4 cxd4 Bb5+',
-  'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4 cxd4 Bb5+ Bd7', 'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4 cxd4 Bb5+ Bd7 Bxd7+',
-  'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4 cxd4 Bb5+ Bd7 Bxd7+ Nxd7', 'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4 cxd4 Bb5+ Bd7 Bxd7+ Nxd7 O-O',
-  'e4 e6 f4 d5 Nf3 c5 exd5 exd5 d4 cxd4 Bb5+ Bd7 Bxd7+ Nxd7 O-O Ngf6',
-  'e4 c5', 'e4 c5 Nf3', 'e4 c5 Nf3 d6', 'e4 c5 Nf3 Nc6', 'e4 c5 Nf3 e6', 'e4 c5 Nf3 g6',
-  'e4 c5 Nf3 d6 d4', 'e4 c5 Nf3 d6 d4 cxd4', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3',
-  'e4 c5 Nc3', 'e4 c5 c3', 'e4 c5 f4', 'e4 c5 d4',
-  'e4 c6', 'e4 c6 d4', 'e4 c6 d4 d5', 'e4 c6 d4 d5 Nc3', 'e4 c6 d4 d5 e5', 'e4 c6 d4 d5 exd5',
-  'e4 d5', 'e4 d5 exd5', 'e4 d5 exd5 Qxd5', 'e4 d5 exd5 Nf6',
-  'e4 d6', 'e4 d6 d4', 'e4 d6 d4 Nf6', 'e4 d6 d4 Nf6 Nc3',
-  'e4 Nf6', 'e4 Nf6 e5', 'e4 Nf6 e5 Nd5',
-  'e4 g6', 'e4 g6 d4', 'e4 g6 d4 Bg7',
-  'd4', 'd4 d5', 'd4 d5 c4', 'd4 d5 c4 e6', 'd4 d5 c4 c6', 'd4 d5 c4 dxc4', 'd4 d5 Nf3', 'd4 d5 Bf4',
-  'd4 Nf6', 'd4 Nf6 c4', 'd4 Nf6 c4 e6', 'd4 Nf6 c4 g6', 'd4 Nf6 c4 c5', 'd4 Nf6 Nf3', 'd4 Nf6 Bg5',
-  'd4 f5', 'd4 e6',
-  'c4', 'c4 e5', 'c4 c5', 'c4 Nf6', 'c4 e6',
-  'Nf3', 'Nf3 d5', 'Nf3 Nf6', 'Nf3 c5', 'Nf3 g6',
-  'b3', 'g3', 'f4'
-]);
-
-function isOpeningBookMove(moveHistorySans) {
-  const line = moveHistorySans.join(' ');
-  return OPENING_BOOK_MOVES.has(line);
-}
-
-/**
  * Local symmetric position evaluator fallback
  */
 export function evaluatePosition(chess) {
@@ -246,6 +213,25 @@ export function evaluatePosition(chess) {
   }
 
   return score;
+}
+
+function findHangingPieces(chess, color) {
+  const pieces = [];
+  const opponent = color === 'w' ? 'b' : 'w';
+  const board = chess.board();
+
+  for (let row = 0; row < 8; row++) {
+    for (let column = 0; column < 8; column++) {
+      const piece = board[row][column];
+      if (!piece || piece.color !== color || piece.type === 'k') continue;
+
+      const square = `${String.fromCharCode(97 + column)}${8 - row}`;
+      const attacked = chess.attackers(square, opponent).length > 0;
+      const defended = chess.attackers(square, color).length > 0;
+      if (attacked && !defended) pieces.push({ square, piece: piece.type });
+    }
+  }
+  return pieces;
 }
 
 /**
@@ -304,7 +290,7 @@ function minimax(chess, depth, alpha, beta, isMaximizing) {
   const moves = chess.moves({ verbose: true });
   if (moves.length === 0) {
     if (chess.inCheck()) {
-      return isMaximizing ? -10000 : 10000;
+      return chess.turn() === 'w' ? -10000 : 10000;
     }
     return 0;
   }
@@ -364,8 +350,8 @@ export function centipawnsToWinChance(cp) {
  * Calculates Move Accuracy Score from win chance loss
  */
 export function calculateMoveAccuracy(loss, winChanceBest = 50) {
-  if (loss <= 0.05) return 100;
-  let adjustedLoss = loss;
+  // This is an app-defined win-probability-loss model, not Chess.com's proprietary formula.
+  let adjustedLoss = Math.max(0, loss);
   if (winChanceBest > 80) {
     const factor = Math.min(1, (winChanceBest - 80) / 20);
     adjustedLoss = loss * (1 - factor * 0.4);
@@ -382,7 +368,6 @@ function isBrilliantSacrifice({
   movePlayed,
   winLoss,
   isWhite,
-  playedWinChance,
   scorePlayed,
   chessBefore
 }) {
@@ -412,7 +397,7 @@ function isBrilliantSacrifice({
     if (adv < 150) return false;
 
     return true;
-  } catch (e) {
+  } catch {
     return false;
   }
 }
@@ -430,8 +415,7 @@ export function classifyMove({
   cpLoss = 0,
   isWhite,
   plyIndex,
-  chessBefore,
-  moveHistorySans = []
+  chessBefore
 }) {
   const playedSan = movePlayed.san;
   const bestSan = bestMove?.san || playedSan;
@@ -439,20 +423,11 @@ export function classifyMove({
 
   const winLoss = Math.max(0, winChanceBest - winChancePlayed);
 
-  // 1. Book Move: standard theoretical opening
-  if (plyIndex <= 20 && isOpeningBookMove(moveHistorySans)) {
-    return {
-      classification: Classification.BOOK,
-      explanation: `Book move (${playedSan}). Theoretical opening line.`
-    };
-  }
-
-  // 2. Brilliant Move: strict piece sacrifice
+  // Brilliant is reserved for a best move that sacrifices attacked material while winning.
   if (isBrilliantSacrifice({
     movePlayed,
     winLoss,
     isWhite,
-    playedWinChance: winChancePlayed,
     scorePlayed,
     chessBefore
   })) {
@@ -462,7 +437,7 @@ export function classifyMove({
     };
   }
 
-  // 3. Great Move: sharp only-move
+  // Great is a qualitative label for a critical, best non-pawn move.
   if (isTopChoice && winLoss <= 0.5 && winChancePlayed >= 52 && plyIndex > 6) {
     const isCritical = (isWhite ? scoreBest : -scoreBest) < 100;
     if (isCritical && movePlayed.piece !== 'p' && movePlayed.piece !== 'k') {
@@ -473,39 +448,13 @@ export function classifyMove({
     }
   }
 
-  // 4. Best Move
-  if (isTopChoice || winLoss <= 0.6 || cpLoss <= 10) {
+  if (isTopChoice) {
     return {
       classification: Classification.BEST,
       explanation: `Best move (${playedSan}). Top engine recommendation.`
     };
   }
 
-  // 5. Excellent Move
-  if (winLoss <= 2.5 || cpLoss <= 30) {
-    return {
-      classification: Classification.EXCELLENT,
-      explanation: `Excellent move (${playedSan}). Maintains the evaluation without compromise.`
-    };
-  }
-
-  // 6. Good Move
-  if (winLoss <= 6.5 || cpLoss <= 55) {
-    return {
-      classification: Classification.GOOD,
-      explanation: `Solid move (${playedSan}). Sound and playable continuation.`
-    };
-  }
-
-  // 7. Inaccuracy (Lichess standard: ~50-100 cp loss)
-  if (winLoss <= 14.0 || cpLoss <= 100) {
-    return {
-      classification: Classification.INACCURACY,
-      explanation: `Inaccuracy (${playedSan}). Cedes some advantage (-${Math.round(cpLoss)} cp). Best was ${bestSan}.`
-    };
-  }
-
-  // 8. Missed Win
   if (winChanceBest >= 68 && winChancePlayed < 52) {
     return {
       classification: Classification.MISS,
@@ -513,11 +462,39 @@ export function classifyMove({
     };
   }
 
-  // 9. Mistake (Lichess standard: ~100-200 cp loss)
-  if (winLoss <= 25.0 || cpLoss <= 200) {
+  // Both win-probability loss and centipawn loss must agree before assigning a band.
+  if (winLoss <= 0.6 && cpLoss <= 10) {
+    return {
+      classification: Classification.EXCELLENT,
+      explanation: `Excellent move (${playedSan}). Nearly as strong as the engine choice.`
+    };
+  }
+
+  if (winLoss <= 2.5 && cpLoss <= 30) {
+    return {
+      classification: Classification.EXCELLENT,
+      explanation: `Excellent move (${playedSan}). Maintains the evaluation without compromise.`
+    };
+  }
+
+  if (winLoss <= 6.5 && cpLoss <= 55) {
+    return {
+      classification: Classification.GOOD,
+      explanation: `Solid move (${playedSan}). Sound and playable continuation.`
+    };
+  }
+
+  if (winLoss <= 14.0 && cpLoss <= 100) {
+    return {
+      classification: Classification.INACCURACY,
+      explanation: `Inaccuracy (${playedSan}). Cedes some advantage (${Math.round(cpLoss)} cp loss). Best was ${bestSan}.`
+    };
+  }
+
+  if (winLoss <= 25.0 && cpLoss <= 200) {
     return {
       classification: Classification.MISTAKE,
-      explanation: `Mistake (${playedSan}). Weakens the position considerably (-${Math.round(cpLoss)} cp). Best was ${bestSan}.`
+      explanation: `Mistake (${playedSan}). Weakens the position considerably (${Math.round(cpLoss)} cp loss). Best was ${bestSan}.`
     };
   }
 
@@ -529,15 +506,20 @@ export function classifyMove({
 }
 
 /**
- * Analyzes an entire PGN game move-by-move using Lichess Cloud Evaluation & Public APIs
+ * Analyzes each distinct position with one consistent local Stockfish search configuration.
  */
-export async function analyzePgnGame(pgnText, onProgress = null) {
+export async function analyzePgnGame(pgnText, onProgress = null, {
+  signal,
+  depth = STOCKFISH_SEARCH.depth,
+  threads = STOCKFISH_SEARCH.threads,
+  hashMb = STOCKFISH_SEARCH.hashMb
+} = {}) {
   const chess = new Chess();
 
   try {
     chess.loadPgn(pgnText);
   } catch (err) {
-    throw new Error('Failed to parse PGN: ' + err.message);
+    throw new Error('Failed to parse PGN: ' + err.message, { cause: err });
   }
 
   const history = chess.history({ verbose: true });
@@ -547,191 +529,206 @@ export async function analyzePgnGame(pgnText, onProgress = null) {
     throw new Error('PGN contains no moves.');
   }
 
-  const analysisEngine = new Chess();
+  const startFen = headers.SetUp === '1' && headers.FEN ? headers.FEN : undefined;
+  const analysisEngine = new Chess(startFen);
   const analyzedPositions = [];
-
-  // Initial position eval (move 0)
-  let initialScore = 0;
-  let initialLines = [];
-  try {
-    const onlineInit = await evaluatePositionOnline(analysisEngine.fen(), true, 12);
-    if (onlineInit && onlineInit.whiteCp !== undefined) {
-      initialScore = onlineInit.whiteCp;
-      initialLines = onlineInit.lines || [];
-    } else {
-      initialScore = evaluatePosition(analysisEngine);
-    }
-  } catch (e) {
-    initialScore = evaluatePosition(analysisEngine);
-  }
-
-  const initialWinChance = centipawnsToWinChance(initialScore);
-
-  analyzedPositions.push({
-    ply: 0,
-    fen: analysisEngine.fen(),
-    move: null,
-    score: initialScore,
-    winChance: initialWinChance,
-    classification: null,
-    accuracy: 100,
-    bestMove: null,
-    lines: initialLines,
-    explanation: 'Starting Position'
-  });
-
-  const moveHistorySans = [];
   let whiteCpLossSum = 0;
   let blackCpLossSum = 0;
+  const engine = typeof Worker === 'function' ? new StockfishEngine({ depth, threads, hashMb }) : null;
+  const sourceName = engine ? 'Stockfish' : 'deterministic local minimax fallback';
+  const positionCache = new Map();
 
-  for (let i = 0; i < history.length; i++) {
-    const move = history[i];
-    const isWhite = i % 2 === 0;
+  const evaluateFen = async (fen) => {
+    if (signal?.aborted) throw new DOMException('Analysis was cancelled.', 'AbortError');
+    if (positionCache.has(fen)) return positionCache.get(fen);
 
-    // Snapshot board state before move
-    const fenBefore = analysisEngine.fen();
-    const chessBefore = new Chess(fenBefore);
-
-    let bestMove = null;
-    let bestScore = 0;
-    let playedScore = 0;
-    let currentLines = [];
-
-    const playedUci = `${move.from}${move.to}${move.promotion || ''}`;
-
-    // 1. Query Lichess Cloud Evaluation API & Public Stockfish API
-    let onlineEval = null;
-    try {
-      onlineEval = await evaluatePositionOnline(fenBefore, isWhite, 12);
-    } catch (e) {}
-
-    if (onlineEval) {
-      bestScore = onlineEval.whiteCp;
-      currentLines = onlineEval.lines || [];
-      const bUci = onlineEval.bestMoveUci;
-
-      if (bUci) {
-        const bFrom = bUci.slice(0, 2);
-        const bTo = bUci.slice(2, 4);
-        const bPromo = bUci.length > 4 ? bUci[4] : undefined;
-        const legals = chessBefore.moves({ verbose: true });
-        const matched = legals.find(m => m.from === bFrom && m.to === bTo && (!bPromo || m.promotion === bPromo));
-        if (matched) {
-          bestMove = matched;
-        } else {
-          bestMove = { san: onlineEval.bestMoveSan || bUci, from: bFrom, to: bTo };
-        }
+    const position = new Chess(fen);
+    let result;
+    if (position.isGameOver()) {
+      const whiteCp = position.isCheckmate() ? (position.turn() === 'w' ? -10000 : 10000) : 0;
+      result = { source: engine ? 'stockfish-local' : 'local-minimax', whiteCp, mate: position.isCheckmate() ? 0 : null, depth: 0, nodes: 0, bestMoveUci: null, lines: [] };
+    } else if (engine) {
+      const uciResult = await engine.analyze(fen, signal);
+      const bestMoveUci = uciResult.bestMoveUci;
+      const bestMove = bestMoveUci ? position.moves({ verbose: true }).find((move) =>
+        move.from === bestMoveUci.slice(0, 2) &&
+        move.to === bestMoveUci.slice(2, 4) &&
+        (move.promotion || '') === (bestMoveUci[4] || '')
+      ) : null;
+      if (bestMoveUci && !bestMove) {
+        throw new Error(`Stockfish returned illegal move ${bestMoveUci} for FEN ${fen}.`);
       }
-
-      if (bUci && playedUci === bUci) {
-        playedScore = bestScore;
-      } else {
-        // Query evaluation after played move
-        const tempChess = new Chess(fenBefore);
-        tempChess.move(move);
-        if (tempChess.isGameOver()) {
-          if (tempChess.isCheckmate()) {
-            playedScore = isWhite ? 10000 : -10000;
-          } else {
-            playedScore = 0;
-          }
-        } else {
-          try {
-            const nextOnline = await evaluatePositionOnline(tempChess.fen(), !isWhite, 12);
-            if (nextOnline) {
-              playedScore = nextOnline.whiteCp;
-            } else {
-              playedScore = evaluatePosition(tempChess);
-            }
-          } catch (e) {
-            playedScore = evaluatePosition(tempChess);
-          }
-        }
+      const continuationSan = [];
+      const continuationBoard = new Chess(fen);
+      for (const uci of uciResult.pv) {
+        const move = continuationBoard.move({
+          from: uci.slice(0, 2),
+          to: uci.slice(2, 4),
+          promotion: uci[4]
+        });
+        if (!move) break;
+        continuationSan.push(move.san);
       }
-    }
-
-    // 2. Fallback to Minimax Evaluator if online API returned null
-    if (!bestMove) {
-      const searchResult = findBestMove(chessBefore, 2);
-      bestMove = searchResult.bestMove;
-      bestScore = searchResult.bestScore;
-      currentLines = searchResult.lines || [];
-
-      if (bestMove && move.san === bestMove.san) {
-        playedScore = bestScore;
-      } else {
-        playedScore = evaluateMovePlayed(chessBefore, move, 2);
-      }
-    }
-
-    // Execute the actual move played in the game
-    const executed = analysisEngine.move(move);
-    moveHistorySans.push(executed.san);
-
-    // Calculate win chances from current player's perspective
-    const bestWinChance = isWhite ? centipawnsToWinChance(bestScore) : (100 - centipawnsToWinChance(bestScore));
-    const playedWinChance = isWhite ? centipawnsToWinChance(playedScore) : (100 - centipawnsToWinChance(playedScore));
-    const winLoss = Math.max(0, bestWinChance - playedWinChance);
-
-    // Centipawn loss (Lichess metric)
-    const cpLoss = Math.max(0, isWhite ? (bestScore - playedScore) : (playedScore - bestScore));
-    if (isWhite) {
-      whiteCpLossSum += Math.min(500, cpLoss);
+      result = {
+        ...uciResult,
+        bestMove,
+        lines: [{
+          id: 1,
+          cp: uciResult.whiteCp,
+          mate: uciResult.mate,
+          bestMoveUci,
+          bestMoveSan: bestMove?.san || null,
+          continuationUci: uciResult.pv,
+          continuationSan,
+          movesText: continuationSan.join(' '),
+          depth: uciResult.depth,
+          nodes: uciResult.nodes
+        }]
+      };
     } else {
-      blackCpLossSum += Math.min(500, cpLoss);
+      const search = findBestMove(position, 2);
+      const bestMoveUci = search.bestMove
+        ? `${search.bestMove.from}${search.bestMove.to}${search.bestMove.promotion || ''}`
+        : null;
+      result = {
+        source: 'local-minimax',
+        engineVersion: 'built-in deterministic minimax',
+        depth: 2,
+        nodes: null,
+        whiteCp: search.bestScore,
+        mate: null,
+        bestMoveUci,
+        bestMove: search.bestMove,
+        lines: search.lines.map((line) => ({
+          ...line,
+          continuationUci: [line.bestMoveUci],
+          continuationSan: line.continuationSan,
+          depth: 2,
+          nodes: null
+        }))
+      };
     }
 
-    // Classify move
-    const { classification, explanation } = classifyMove({
-      movePlayed: executed,
-      bestMove,
-      winChanceBest: bestWinChance,
-      winChancePlayed: playedWinChance,
-      scoreBest: bestScore,
-      scorePlayed: playedScore,
-      cpLoss,
-      isWhite,
-      plyIndex: i + 1,
-      chessBefore,
-      moveHistorySans
-    });
+    positionCache.set(fen, result);
+    return result;
+  };
 
-    // Book moves and best moves get 100% accuracy
-    const moveAccuracy = classification === Classification.BOOK ? 100 : calculateMoveAccuracy(winLoss, bestWinChance);
-
-    // Position score from White's perspective
-    const currentScore = playedScore;
-    const currentWinChance = centipawnsToWinChance(currentScore);
-
+  try {
+    let currentEval = await evaluateFen(analysisEngine.fen());
     analyzedPositions.push({
-      ply: i + 1,
-      moveNumber: Math.floor(i / 2) + 1,
-      isWhite,
-      san: executed.san,
-      uci: `${executed.from}${executed.to}${executed.promotion || ''}`,
-      from: executed.from,
-      to: executed.to,
+      ply: 0,
       fen: analysisEngine.fen(),
-      score: currentScore,
-      winChance: currentWinChance,
-      classification,
-      accuracy: moveAccuracy,
-      cpLoss: Math.round(cpLoss),
-      bestMove: bestMove ? { san: bestMove.san, from: bestMove.from, to: bestMove.to } : null,
-      lines: currentLines,
-      explanation
+      move: null,
+      score: currentEval.whiteCp,
+      winChance: centipawnsToWinChance(currentEval.whiteCp),
+      classification: null,
+      accuracy: 100,
+      bestMove: null,
+      depth: currentEval.depth,
+      nodes: currentEval.nodes,
+      mate: currentEval.mate,
+      lines: currentEval.lines,
+      explanation: 'Starting Position'
     });
 
-    if (onProgress) {
-      onProgress({
-        current: i + 1,
-        total: history.length,
-        percentage: Math.round(((i + 1) / history.length) * 100)
+    for (let i = 0; i < history.length; i++) {
+      if (signal?.aborted) throw new DOMException('Analysis was cancelled.', 'AbortError');
+      const move = history[i];
+      const isWhite = analysisEngine.turn() === 'w';
+      const fenBefore = analysisEngine.fen();
+      const chessBefore = new Chess(fenBefore);
+      const bestScore = currentEval.whiteCp;
+      let bestMove = currentEval.bestMove;
+      const hangingBefore = findHangingPieces(chessBefore, isWhite ? 'w' : 'b');
+
+      if (engine && !bestMove && !chessBefore.isGameOver()) {
+        const uci = currentEval.bestMoveUci;
+        if (!uci) throw new Error(`Stockfish did not return a best move for FEN ${fenBefore}.`);
+        bestMove = chessBefore.moves({ verbose: true }).find((candidate) =>
+          candidate.from === uci.slice(0, 2) &&
+          candidate.to === uci.slice(2, 4) &&
+          (candidate.promotion || '') === (uci[4] || '')
+        );
+      }
+      if (!bestMove) throw new Error(`No legal best move found for FEN ${fenBefore}.`);
+
+      const executed = analysisEngine.move(move);
+      const hangingAfter = findHangingPieces(analysisEngine, isWhite ? 'w' : 'b');
+      const hangingPieces = hangingAfter.filter((piece) =>
+        !hangingBefore.some((before) => before.square === piece.square && before.piece === piece.piece)
+      );
+      const afterEval = await evaluateFen(analysisEngine.fen());
+      const playedScore = afterEval.whiteCp;
+      const moverSign = isWhite ? 1 : -1;
+      const bestWinChance = centipawnsToWinChance(bestScore * moverSign);
+      const playedWinChance = centipawnsToWinChance(playedScore * moverSign);
+      const winLoss = Math.max(0, bestWinChance - playedWinChance);
+      const cpLoss = Math.max(0, (bestScore - playedScore) * moverSign);
+      const missedTactic = currentEval.mate !== null &&
+        currentEval.mate * moverSign > 0 &&
+        !(afterEval.mate !== null && afterEval.mate * moverSign > 0);
+
+      if (isWhite) whiteCpLossSum += Math.min(10000, cpLoss);
+      else blackCpLossSum += Math.min(10000, cpLoss);
+
+      const result = classifyMove({
+        movePlayed: executed,
+        bestMove,
+        winChanceBest: bestWinChance,
+        winChancePlayed: playedWinChance,
+        scoreBest: bestScore,
+        scorePlayed: playedScore,
+        cpLoss,
+        isWhite,
+        plyIndex: i + 1,
+        chessBefore
       });
-      if (i % 3 === 0) {
-        await new Promise(r => setTimeout(r, 0));
+      const { classification } = result;
+      const annotations = [];
+      if (missedTactic) annotations.push('A forced mate was available and is no longer maintained.');
+      if (hangingPieces.length) {
+        annotations.push(`Leaves attacked, undefended piece(s) on ${hangingPieces.map((piece) => piece.square).join(', ')}.`);
+      }
+      const explanation = [result.explanation, ...annotations].join(' ');
+      const moveAccuracy = calculateMoveAccuracy(winLoss, bestWinChance);
+
+      analyzedPositions.push({
+        ply: i + 1,
+        moveNumber: Number(fenBefore.split(' ')[5]),
+        isWhite,
+        san: executed.san,
+        uci: `${executed.from}${executed.to}${executed.promotion || ''}`,
+        from: executed.from,
+        to: executed.to,
+        fen: analysisEngine.fen(),
+        score: playedScore,
+        winChance: centipawnsToWinChance(playedScore),
+        classification,
+        accuracy: moveAccuracy,
+        cpLoss: Math.round(cpLoss),
+        bestMove: { san: bestMove.san, from: bestMove.from, to: bestMove.to },
+        lines: currentEval.lines,
+        depth: currentEval.depth,
+        nodes: currentEval.nodes,
+        mate: afterEval.mate,
+        critical: cpLoss >= 200 || currentEval.mate !== null || hangingPieces.length > 0,
+        missedTactic,
+        hangingPieces,
+        explanation
+      });
+      currentEval = afterEval;
+
+      if (onProgress) {
+        onProgress({
+          current: i + 1,
+          total: history.length,
+          percentage: Math.round(((i + 1) / history.length) * 100)
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
+  } finally {
+    engine?.close();
   }
 
   // Calculate Overall Accuracies & ACPL
@@ -782,6 +779,14 @@ export async function analyzePgnGame(pgnText, onProgress = null) {
     breakdown: {
       white: countClassifications(whiteMoves),
       black: countClassifications(blackMoves)
+    },
+    engine: {
+      name: sourceName,
+      version: engine?.engineVersion || 'built-in deterministic minimax',
+      depth: engine?.depth || 2,
+      threads: engine?.settings.threads || 1,
+      hashMb: engine?.settings.hashMb || 0,
+      multiPv: STOCKFISH_SEARCH.multiPv
     },
     positions: analyzedPositions,
     totalPlies: history.length

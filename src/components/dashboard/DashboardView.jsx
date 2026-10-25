@@ -244,7 +244,7 @@ export default function DashboardView({
               </div>
               <h3 className="text-lg font-bold text-white tracking-tight">Game Analysis & Review</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Paste any chess PGN to review move-by-move accuracy, multi-PV engine candidate lines, and blunder classification powered by Lichess Cloud API.
+                Paste any chess PGN to review move-by-move accuracy, a Stockfish principal variation, and blunder classifications.
               </p>
             </div>
 

@@ -86,7 +86,7 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis,
             </div>
             <h3 className="text-lg font-bold text-white tracking-tight">Grandmaster Game Analysis</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Upload or paste any chess PGN for instant move-by-move evaluations powered by the public Lichess Cloud Evaluation API (depth 30–70) and Stockfish Multi-PV (2–3 engine lines per move). Detect blunders, brilliant sacrifices, and accurate centipawn loss.
+              Upload or paste a PGN for move-by-move analysis with the bundled local Stockfish engine. Review evaluation, principal variations, centipawn loss, and tactical classifications. Optional Lichess Cloud results are separate and never replace local review scores.
             </p>
           </div>
           <button
@@ -141,9 +141,9 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis,
           <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
             <Cpu size={20} className="text-sky-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-white">Lichess Cloud & Multi-PV Analysis</h4>
+              <h4 className="text-sm font-bold text-white">Local Stockfish Game Review</h4>
               <p className="text-xs text-slate-400 mt-1">
-                Deep master evaluations backed by Lichess's public database of pre-computed Stockfish positions at depths up to 70 with 2–3 engine continuation lines for every position.
+                Reproducible, single-thread Stockfish searches at a fixed depth. Each position is evaluated independently with the engine's transposition table reset, and scores are normalized to White's perspective.
               </p>
             </div>
           </div>

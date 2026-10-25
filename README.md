@@ -37,6 +37,13 @@ A complete, interactive chess training platform built with React, Vite, Tailwind
    - One-click JSON backup export and restore in Settings.
    - Automatic pre-seeding of the 1,131 Woodpecker Master puzzles.
 
+6. **Deterministic Game Review**:
+   - Game reviews use the bundled local Stockfish UCI worker, with depth 12, one thread, 16 MB hash, and MultiPV 1 by default (clamped to the engine's advertised limits).
+   - The search settings are centralized in `src/services/stockfishEngine.js`; the single-thread fixed-depth budget favors reproducibility and responsiveness over peak playing strength. The bundled 2019 engine advertises a 16 MB hash and one available thread.
+   - FEN scores and mate scores are normalized to White's perspective. The reported centipawn loss, move classification, and accuracy score are separate values.
+   - Accuracy is an app-defined heuristic based on the loss in estimated win probability; it is not a claim of Chess.com parity.
+   - Lichess Cloud Evaluation is optional and separate. Its cached response is never used to replace local Stockfish review scores.
+
 ---
 
 ## 🛠️ CLI Commands
@@ -57,6 +64,8 @@ npm run import:pgn -- ./path/to/course.pgn --title "My Opening Repertoire"
 # Run Woodpecker Method data migration & validation check
 npm run migrate:woodpecker
 ```
+
+The browser review reports the selected engine version, search depth, thread count, and hash size. In environments without Web Workers (including the Node test runner), the review uses the deterministic depth-2 local minimax fallback; those evaluations are intentionally identified as fallback results and are not comparable to Stockfish strength.
 
 ---
 

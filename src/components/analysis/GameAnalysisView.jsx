@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Chess } from 'chess.js';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Chessboard } from 'react-chessboard';
 import {
   Activity,
@@ -21,6 +20,7 @@ import {
   CLASSIFICATION_META,
   centipawnsToWinChance
 } from '../../services/gameAnalysisEngine.js';
+import { STOCKFISH_SEARCH } from '../../services/stockfishEngine.js';
 
 // Sample master games for immediate 1-click testing
 const SAMPLE_GAMES = {
@@ -63,9 +63,15 @@ export default function GameAnalysisView() {
   const [currentPly, setCurrentPly] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const playTimerRef = useRef(null);
+  const analysisAbortRef = useRef(null);
+  const analysisRunRef = useRef(0);
 
   const startAnalysis = async (pgnText) => {
     if (!pgnText.trim()) return;
+    analysisAbortRef.current?.abort();
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
+    const runId = ++analysisRunRef.current;
     setIsAnalyzing(true);
     setAnalysisProgress(0);
     setAnalysisResult(null);
@@ -75,14 +81,21 @@ export default function GameAnalysisView() {
 
     try {
       const result = await analyzePgnGame(pgnText, (prog) => {
-        setAnalysisProgress(prog.percentage);
-      });
-      setAnalysisResult(result);
-      setCurrentPly(0);
+        if (analysisRunRef.current === runId) setAnalysisProgress(prog.percentage);
+      }, { signal: controller.signal });
+      if (analysisRunRef.current === runId) {
+        setAnalysisResult(result);
+        setCurrentPly(0);
+      }
     } catch (err) {
-      alert('Analysis Error: ' + err.message);
+      if (err.name !== 'AbortError' && analysisRunRef.current === runId) {
+        alert('Analysis Error: ' + err.message);
+      }
     } finally {
-      setIsAnalyzing(false);
+      if (analysisRunRef.current === runId) {
+        analysisAbortRef.current = null;
+        setIsAnalyzing(false);
+      }
     }
   };
 
@@ -94,6 +107,7 @@ export default function GameAnalysisView() {
   // Clean up timer on unmount
   useEffect(() => {
     return () => {
+      analysisAbortRef.current?.abort();
       if (playTimerRef.current) clearInterval(playTimerRef.current);
     };
   }, []);
@@ -172,14 +186,14 @@ export default function GameAnalysisView() {
               <Activity size={16} />
             </span>
             <span className="text-xs font-mono uppercase tracking-widest text-amber-500 font-semibold">
-              Lichess Cloud & Stockfish Multi-PV
+              Local Stockfish · depth {STOCKFISH_SEARCH.depth} · MultiPV 1
             </span>
           </div>
           <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
             Game Analysis & Accuracy
           </h1>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Upload or paste any chess game PGN to review move accuracy, tactical classifications, and multi-line engine evaluations.
+            Upload or paste any chess game PGN for move accuracy, tactical classifications, and a principal engine line.
           </p>
         </div>
 
@@ -258,7 +272,7 @@ export default function GameAnalysisView() {
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">Analyzing Game...</h2>
             <p className="text-xs text-slate-400 mt-1">
-              Evaluating with Lichess Cloud & Stockfish APIs ({analysisProgress}%).
+              Searching bundled Stockfish at depth {STOCKFISH_SEARCH.depth} ({analysisProgress}%).
             </p>
           </div>
           <div className="w-full max-w-md mx-auto bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800">
@@ -273,6 +287,13 @@ export default function GameAnalysisView() {
       {/* Unified Screen: Shared Board on Left + Vertical Side Bar on Right */}
       {analysisResult && (
         <div className="space-y-6 animate-fadeIn">
+          <p className="text-[10px] font-mono text-slate-500">
+            {analysisResult.engine?.version} · depth {analysisResult.engine?.depth} · {analysisResult.engine?.threads} thread(s) · {analysisResult.engine?.hashMb} MB hash
+            {analysisResult.engine?.name !== 'Stockfish' && ' · fallback engine'}
+          </p>
+          <p className="text-[10px] font-mono text-slate-500">
+            Current position: depth {currentPos?.depth ?? 0} · {(currentPos?.nodes ?? 0).toLocaleString()} nodes
+          </p>
           
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             
@@ -625,7 +646,8 @@ export default function GameAnalysisView() {
                         Classification.BRILLIANT,
                         Classification.GREAT,
                         Classification.BEST,
-                        Classification.BOOK,
+                        Classification.EXCELLENT,
+                        Classification.GOOD,
                         Classification.INACCURACY,
                         Classification.MISTAKE,
                         Classification.MISS,

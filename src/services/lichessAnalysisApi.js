@@ -1,209 +1,118 @@
-/**
- * Public & Free Chess Analysis API Service
- * Powered by Lichess Cloud Evaluation API & Public Stockfish API.
- * Free, public, no registration or API keys required.
- * Provides multi-PV engine lines (up to 3 lines per move).
- */
-
 import { Chess } from 'chess.js';
 
-// In-memory cache for evaluated FENs during session
 const evalCache = new Map();
+const pendingEvaluations = new Map();
+const REQUEST_TIMEOUT_MS = 5000;
+const MAX_CACHE_ENTRIES = 500;
 
-/**
- * Normalizes FEN string for cache key
- */
-function normalizeFenKey(fen) {
-  return fen.split(' ').slice(0, 4).join(' ');
+export function normalizeFenKey(fen) {
+  return fen.trim().split(/\s+/).join(' ');
 }
 
-/**
- * Converts UCI moves sequence to readable SAN sequence using chess.js
- */
 export function uciMovesToSan(fen, uciMoves = [], maxMoves = 6) {
-  if (!uciMoves || uciMoves.length === 0) return [];
-  try {
-    const tempChess = new Chess(fen);
-    const sanList = [];
-    const count = Math.min(uciMoves.length, maxMoves);
+  if (!uciMoves.length) return [];
+  const chess = new Chess(fen);
+  const sanMoves = [];
 
-    for (let i = 0; i < count; i++) {
-      const uci = uciMoves[i];
-      if (!uci || uci.length < 4) break;
-      const from = uci.slice(0, 2);
-      const to = uci.slice(2, 4);
-      const promo = uci.length > 4 ? uci[4] : undefined;
-      const m = tempChess.move({ from, to, promotion: promo });
-      if (m) {
-        sanList.push(m.san);
-      } else {
-        break;
-      }
-    }
-    return sanList;
-  } catch (err) {
-    return [];
-  }
-}
-
-/**
- * Fetches position evaluation and multiple engine lines from Lichess Cloud Evaluation API
- * Endpoint: https://lichess.org/api/cloud-eval?fen=...&multiPv=3
- */
-async function fetchLichessCloudEval(fen) {
-  try {
-    const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=3`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      }
+  for (const uci of uciMoves.slice(0, maxMoves)) {
+    if (!uci || uci.length < 4) break;
+    const move = chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: uci[4]
     });
-
-    if (res.status === 200) {
-      const data = await res.json();
-      if (data && data.pvs && data.pvs.length > 0) {
-        // Parse all available PV lines (up to 3)
-        const lines = data.pvs.slice(0, 3).map((pv, idx) => {
-          const uciMoves = pv.moves ? pv.moves.split(' ') : [];
-          const bestUci = uciMoves[0] || null;
-          const sanList = uciMovesToSan(fen, uciMoves, 6);
-          const cp = pv.cp !== undefined ? pv.cp : (pv.mate ? (pv.mate > 0 ? 10000 : -10000) : 0);
-
-          return {
-            id: idx + 1,
-            cp,
-            mate: pv.mate || null,
-            bestMoveUci: bestUci,
-            bestMoveSan: sanList[0] || bestUci,
-            continuationUci: uciMoves.slice(0, 6),
-            continuationSan: sanList,
-            movesText: sanList.join(' ')
-          };
-        });
-
-        const topPv = lines[0];
-
-        return {
-          source: 'lichess-cloud',
-          depth: data.depth || 30,
-          knodes: data.knodes || 0,
-          whiteCp: topPv.cp,
-          mate: topPv.mate,
-          bestMoveUci: topPv.bestMoveUci,
-          bestMoveSan: topPv.bestMoveSan,
-          lines
-        };
-      }
-    }
-  } catch (err) {
-    // Non-blocking fallback
+    if (!move) break;
+    sanMoves.push(move.san);
   }
-  return null;
+  return sanMoves;
 }
 
-/**
- * Fetches position evaluation from Free Public Stockfish API (Chess-API.com)
- * Endpoint: https://chess-api.com/v1
- */
-async function fetchPublicStockfishApi(fen, depth = 12) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+async function fetchLichessCloudEval(fen, multiPv, signal) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
 
-    const res = await fetch('https://chess-api.com/v1', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        fen,
-        depth: Math.min(16, depth),
-        maxThinkingTime: 60,
-        variants: 3
-      }),
+  try {
+    const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=${multiPv}`;
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
       signal: controller.signal
     });
 
-    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!Array.isArray(data?.pvs) || data.pvs.length === 0) return null;
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && (data.move || data.eval !== undefined)) {
-        let cp = 0;
-        if (data.mate !== null && data.mate !== undefined) {
-          const m = parseInt(data.mate, 10);
-          cp = m > 0 ? 10000 : -10000;
-        } else if (data.centipawns !== undefined) {
-          cp = typeof data.centipawns === 'string' ? parseInt(data.centipawns, 10) : data.centipawns;
-        } else if (data.eval !== undefined) {
-          cp = Math.round(data.eval * 100);
-        }
+    const turn = fen.split(/\s+/)[1];
+    const whiteSign = turn === 'b' ? -1 : 1;
+    const lines = data.pvs.slice(0, multiPv).map((pv, index) => {
+      const uciMoves = typeof pv.moves === 'string' ? pv.moves.split(/\s+/).filter(Boolean) : [];
+      const sanMoves = uciMovesToSan(fen, uciMoves);
+      const rawMate = Number.isFinite(pv.mate) ? pv.mate : null;
+      const rawCp = Number.isFinite(pv.cp)
+        ? pv.cp
+        : rawMate === null ? null : Math.sign(rawMate || 1) * (10000 - Math.abs(rawMate) * 10);
+      const score = (rawCp ?? 0) * whiteSign;
 
-        const continuation = data.continuationArr || [];
-        const continuationSan = uciMovesToSan(fen, [data.move, ...continuation], 6);
+      return {
+        id: index + 1,
+        cp: score,
+        mate: rawMate === null ? null : rawMate * whiteSign,
+        bestMoveUci: uciMoves[0] || null,
+        bestMoveSan: sanMoves[0] || null,
+        continuationUci: uciMoves.slice(0, 6),
+        continuationSan: sanMoves,
+        movesText: sanMoves.join(' ')
+      };
+    });
+    const topLine = lines[0];
 
-        const lines = [
-          {
-            id: 1,
-            cp,
-            mate: data.mate || null,
-            bestMoveUci: data.move || null,
-            bestMoveSan: data.san || continuationSan[0] || data.move,
-            continuationUci: [data.move, ...continuation].slice(0, 6),
-            continuationSan,
-            movesText: continuationSan.join(' ')
-          }
-        ];
+    return {
+      source: 'lichess-cloud',
+      engineVersion: 'Lichess Cloud Evaluation (engine configuration not guaranteed)',
+      depth: Number(data.depth) || null,
+      nodes: Number(data.knodes) ? Number(data.knodes) * 1000 : null,
+      whiteCp: topLine.cp,
+      mate: topLine.mate,
+      bestMoveUci: topLine.bestMoveUci,
+      bestMoveSan: topLine.bestMoveSan,
+      lines
+    };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abort);
+  }
+}
 
-        return {
-          source: 'chess-api-stockfish',
-          depth: data.depth || depth,
-          whiteCp: cp,
-          mate: data.mate || null,
-          bestMoveUci: data.move || null,
-          bestMoveSan: data.san || continuationSan[0] || data.move,
-          winChance: data.winChance,
-          text: data.text,
-          lines
-        };
+/**
+ * Fetches an optional cloud evaluation. This is not used to override local Stockfish review scores.
+ */
+export async function evaluatePositionOnline(fen, _isWhiteTurn, depth = 12, { multiPv = 3, signal } = {}) {
+  const cacheKey = `${normalizeFenKey(fen)}|lichess-cloud|depth=${depth}|multiPv=${multiPv}`;
+  if (evalCache.has(cacheKey)) return evalCache.get(cacheKey);
+  if (pendingEvaluations.has(cacheKey)) return pendingEvaluations.get(cacheKey);
+
+  const request = fetchLichessCloudEval(fen, multiPv, signal);
+  pendingEvaluations.set(cacheKey, request);
+  try {
+    const result = await request;
+    if (result) {
+      if (evalCache.size >= MAX_CACHE_ENTRIES) {
+        evalCache.delete(evalCache.keys().next().value);
       }
+      evalCache.set(cacheKey, result);
     }
-  } catch (err) {
-    // Non-blocking fallback
+    return result;
+  } finally {
+    pendingEvaluations.delete(cacheKey);
   }
-  return null;
 }
 
-/**
- * Universal Position Evaluator
- * Checks cache, Lichess Cloud Eval API, Public Stockfish API, and returns multi-line evaluation
- */
-export async function evaluatePositionOnline(fen, isWhiteTurn, depth = 12) {
-  const cacheKey = normalizeFenKey(fen);
-  if (evalCache.has(cacheKey)) {
-    return evalCache.get(cacheKey);
-  }
-
-  // 1. Try Lichess Cloud Evaluation (multiPv=3, up to depth 70)
-  let evalResult = await fetchLichessCloudEval(fen);
-
-  // 2. If not found in Lichess cache, query Public Stockfish API
-  if (!evalResult) {
-    evalResult = await fetchPublicStockfishApi(fen, depth);
-  }
-
-  if (evalResult) {
-    evalCache.set(cacheKey, evalResult);
-    return evalResult;
-  }
-
-  return null;
-}
-
-/**
- * Clears the evaluation cache
- */
 export function clearEvaluationCache() {
   evalCache.clear();
+  pendingEvaluations.clear();
 }
