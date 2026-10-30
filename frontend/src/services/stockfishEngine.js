@@ -4,7 +4,7 @@ export const STOCKFISH_SEARCH = Object.freeze({
   threads: 1,
   hashMb: 16,
   multiPv: 3,
-  defaultMultiPv: 1
+  defaultMultiPv: 2
 });
 
 const APP_BASE_URL = import.meta.env?.BASE_URL || '/';

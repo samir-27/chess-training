@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js';
+import openingsDatabase from '../resources/openingsData.js';
 
 /**
  * Theoretical Opening Book Service
@@ -11,6 +12,17 @@ export function getOpeningFenKey(fen) {
   if (!fen) return '';
   const parts = fen.trim().split(/\s+/);
   return `${parts[0]} ${parts[1]} ${parts[2]} ${parts[3] || '-'}`;
+}
+
+/**
+ * Retrieves the theoretical opening name for a FEN (matching WintrChess opening database).
+ * @param {string} fen - FEN string
+ * @returns {string|null} - Opening name if found
+ */
+export function getOpeningName(fen) {
+  if (!fen) return null;
+  const fenPieces = fen.trim().split(/\s+/)[0];
+  return openingsDatabase[fenPieces] || null;
 }
 
 // Master Theoretical Book Positions Database
@@ -722,13 +734,46 @@ export function isOpeningBookMove(chessBefore, movePlayed, plyIndex) {
   if (plyIndex > 24) return null;
 
   const fen = chessBefore.fen();
-  const bookEntry = lookupBookPosition(fen);
-  if (!bookEntry) return null;
-
   const san = typeof movePlayed === 'string' ? movePlayed : (movePlayed.san || '');
   const uci = typeof movePlayed === 'object'
     ? `${movePlayed.from || ''}${movePlayed.to || ''}${movePlayed.promotion || ''}`
     : '';
+
+  // 1. Initial starting move filter: only main theoretical moves are book moves on ply 1 / from start FEN
+  if (plyIndex === 1 || chessBefore.fen().startsWith('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR')) {
+    const startMoves = new Set(['e4', 'd4', 'c4', 'Nf3', 'g3', 'b3', 'f4', 'Nc3']);
+    let executedSan = san;
+    if (!executedSan && uci) {
+      try {
+        const testM = new Chess().move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+        if (testM) executedSan = testM.san;
+      } catch {}
+    }
+    if (!startMoves.has(executedSan)) return null;
+  }
+
+  // 2. Check WintrChess comprehensive openingsDatabase on the resulting position
+  try {
+    const nextChess = new Chess(fen);
+    const executed = nextChess.move(movePlayed);
+    if (executed) {
+      const nextPieces = nextChess.fen().split(' ')[0];
+      const openingName = openingsDatabase[nextPieces];
+      if (openingName) {
+        const nextBook = lookupBookPosition(nextChess.fen());
+        return {
+          isBook: true,
+          eco: nextBook?.eco || null,
+          name: openingName,
+          bookMoves: [executed.san]
+        };
+      }
+    }
+  } catch {}
+
+  // 3. Fallback to existing OPENING_BOOK Map
+  const bookEntry = lookupBookPosition(fen);
+  if (!bookEntry) return null;
 
   const isCandidate = bookEntry.bookMoves.some((bm) => {
     if (bm === san || bm.toLowerCase() === san.toLowerCase()) return true;

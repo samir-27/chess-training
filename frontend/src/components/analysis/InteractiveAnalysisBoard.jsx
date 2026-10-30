@@ -182,9 +182,9 @@ export default function InteractiveAnalysisBoard({
   const isOriginalPosition = variation.cursor <= originalPrefixLength &&
     variation.originalMoves.slice(0, variation.cursor).join(' ') === variation.moves.slice(0, variation.cursor).join(' ');
 
-  // Instant evaluation lookup: if in a frozen line or on an original position, use cached report position immediately!
+  // Instant evaluation lookup: if on an original position or root, use cached report position immediately!
   const currentEvaluation = useMemo(() => {
-    if (frozenLine) {
+    if (frozenLine && variation.cursor === frozenLine.rootPly) {
       return {
         source: 'frozen-line',
         whiteCp: frozenLine.evalCp,
@@ -202,21 +202,56 @@ export default function InteractiveAnalysisBoard({
           source: 'report',
           whiteCp: origPos.score,
           mate: origPos.mate,
-          depth: origPos.depth || 16,
+          depth: origPos.depth || depth,
           nodes: origPos.nodes,
           bestMoveUci: origPos.bestMove?.uci || null,
           lines: origPos.lines || []
         };
       }
     }
+    if (chess.isGameOver()) {
+      if (chess.isCheckmate()) {
+        const whiteSign = chess.turn() === 'w' ? -1 : 1;
+        return {
+          source: 'terminal',
+          whiteCp: whiteSign * 10000,
+          mate: whiteSign * 1,
+          depth: 0,
+          nodes: 0,
+          bestMoveUci: null,
+          lines: []
+        };
+      }
+      return {
+        source: 'terminal',
+        whiteCp: 0,
+        mate: null,
+        depth: 0,
+        nodes: 0,
+        bestMoveUci: null,
+        lines: []
+      };
+    }
     if (engineResult?.fen === fen) return engineResult;
-    return analysisCache.get(fen) || null;
-  }, [frozenLine, isOriginalPosition, positions, variation.cursor, engineResult, fen, analysisCache]);
+    if (analysisCache.has(fen)) return analysisCache.get(fen);
+    if (frozenLine) {
+      return {
+        source: 'frozen-line-interim',
+        whiteCp: frozenLine.evalCp,
+        mate: frozenLine.evalMate,
+        depth: frozenLine.depth,
+        nodes: null,
+        bestMoveUci: null,
+        lines: []
+      };
+    }
+    return null;
+  }, [frozenLine, isOriginalPosition, positions, variation.cursor, depth, chess, engineResult, fen, analysisCache]);
 
-  // Evaluate new exploratory positions with Stockfish (skipped when frozenLine is active)
+  // Evaluate exploratory or subline positions with Stockfish (keeps the eval bar responsive during subline review)
   useEffect(() => {
     const engine = engineRef.current;
-    if (!engineEnabled || !engine || chess.isGameOver() || isOriginalPosition || frozenLine || analysisCache.has(fen)) {
+    if (!engineEnabled || !engine || chess.isGameOver() || isOriginalPosition || analysisCache.has(fen)) {
       setEngineSearching(false);
       return undefined;
     }
@@ -243,7 +278,7 @@ export default function InteractiveAnalysisBoard({
       active = false;
       controller.abort();
     };
-  }, [fen, engineEnabled, depth, chess, isOriginalPosition, frozenLine, analysisCache]);
+  }, [fen, engineEnabled, depth, chess, isOriginalPosition, analysisCache]);
 
   // Inform parent of resume state (guarded against duplicate renders)
   const lastResumePayloadKeyRef = useRef(null);
