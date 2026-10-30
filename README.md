@@ -38,11 +38,42 @@ A complete, interactive chess training platform built with React, Vite, Tailwind
    - Automatic pre-seeding of the 1,131 Woodpecker Master puzzles.
 
 6. **Deterministic Game Review**:
-   - Game reviews use the bundled local Stockfish UCI worker, with depth 12, one thread, 16 MB hash, and MultiPV 1 by default (clamped to the engine's advertised limits).
-   - The search settings are centralized in `src/services/stockfishEngine.js`; the single-thread fixed-depth budget favors reproducibility and responsiveness over peak playing strength. The bundled 2019 engine advertises a 16 MB hash and one available thread.
+   - Game reviews use the bundled local Stockfish UCI worker at depth 16, one thread, and 16 MB hash. Full-game reports use one principal variation per position; the interactive board searches up to three MultiPV lines.
+   - The search settings are centralized in `src/services/stockfishEngine.js`; the single-thread fixed-depth budget favors reproducibility and responsiveness over peak playing strength. MultiPV is clamped to the engine's advertised limits.
    - FEN scores and mate scores are normalized to White's perspective. The reported centipawn loss, move classification, and accuracy score are separate values.
    - Accuracy is an app-defined heuristic based on the loss in estimated win probability; it is not a claim of Chess.com parity.
    - Lichess Cloud Evaluation is optional and separate. Its cached response is never used to replace local Stockfish review scores.
+
+7. **Interactive Game Analysis**:
+   - Exactly one interactive board for the imported game and its explored variations.
+   - Includes move navigation, undo/redo, promotion choice, board orientation, FEN copy, legal-move highlights, and optional best-move arrows.
+   - Runs the bundled Stockfish worker against the exact explored FEN, with configurable depth, evaluation, and up to three clickable principal variations.
+   - A synchronized evaluation line chart navigates original positions and explored variations; mate or missing evaluations are shown as gaps.
+   - Saved PGN reports and resume positions are available at stable `/analysis/:id` URLs, with browser back/forward support.
+   - Filtered, automatic Gemini commentary explains critical played moves from engine evidence; verified engine-only notes remain available when Gemini is not configured.
+
+## Analysis API and automatic Gemini commentary
+
+Copy `.env.example` to `.env` and configure `MONGODB_URI` (pre-configured to `mongodb://127.0.0.1:27017/chess-training`). Set `GEMINI_API_KEY` and `GEMINI_MODEL` to enable automatic move commentary. These values are read only by the Express server and must never use a `VITE_` prefix. Do not commit `.env`.
+
+Start the app in development with a single command (which runs both the backend Express server and the Vite frontend concurrently):
+
+```bash
+npm run dev
+```
+
+Or run them individually:
+```bash
+npm run server   # starts Express API on http://127.0.0.1:3001
+npm run client   # starts Vite frontend on http://localhost:5173
+```
+
+Vite proxies `/api` requests to the local Express server. For production, build the frontend with `npm run build`, then run `npm start`; Express serves `dist` and falls back to the SPA entry point for app routes. `HOST` defaults to loopback. Set `CORS_ORIGIN` only when the frontend is hosted on a separate origin.
+
+Analysis data is associated with a random anonymous bearer token stored in the browser. The server stores only a hash of the token and filters database access by its session. When MongoDB is unavailable, reports and resume state fall back to `localStorage` on that device; this is not cross-device backup. Clearing site storage also loses access to any remotely stored anonymous data because the bearer token cannot be recovered.
+## Stockfish deployment assets
+
+Vite serves files in `public/` at the site base path, so keep `stockfish.js`, `stockfish.wasm`, and `stockfish.wasm.js` together in `public/` when deploying. The application resolves the worker using Vite's `BASE_URL`; configure that value to the deployed site prefix if the app is hosted below the domain root. The worker and WASM files must be served from the same origin with their original filenames.
 
 ---
 
@@ -51,6 +82,12 @@ A complete, interactive chess training platform built with React, Vite, Tailwind
 ```bash
 # Start Vite development server
 npm run dev
+
+# Start the Express API (in a separate terminal)
+npm run server
+
+# Start the production server after `npm run build`
+npm start
 
 # Run unit tests
 npm test

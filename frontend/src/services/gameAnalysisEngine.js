@@ -6,7 +6,7 @@
  */
 
 import { Chess } from 'chess.js';
-import { StockfishEngine, STOCKFISH_SEARCH } from './stockfishEngine.js';
+import { StockfishEngine, StockfishPool, STOCKFISH_SEARCH } from './stockfishEngine.js';
 
 // Move Classification Types
 export const Classification = {
@@ -505,6 +505,69 @@ export function classifyMove({
   };
 }
 
+export function createAnalysisPreview(pgnText) {
+  const chess = new Chess();
+  chess.loadPgn(pgnText);
+  const history = chess.history({ verbose: true });
+  if (!history.length) throw new Error('PGN contains no moves.');
+  const rawHeaders = chess.header();
+  const startFen = rawHeaders.SetUp === '1' && rawHeaders.FEN ? rawHeaders.FEN : undefined;
+  const replay = new Chess(startFen);
+  const positions = [{
+    ply: 0,
+    fen: replay.fen(),
+    score: null,
+    mate: null,
+    depth: 0,
+    nodes: 0,
+    lines: [],
+    classification: null
+  }];
+  for (const [index, move] of history.entries()) {
+    const played = replay.move(move);
+    positions.push({
+      ply: index + 1,
+      moveNumber: Number(replay.fen().split(' ')[5]),
+      isWhite: played.color === 'w',
+      san: played.san,
+      uci: `${played.from}${played.to}${played.promotion || ''}`,
+      from: played.from,
+      to: played.to,
+      fen: replay.fen(),
+      score: null,
+      mate: null,
+      depth: 0,
+      nodes: 0,
+      lines: [],
+      classification: null
+    });
+  }
+  return {
+    headers: {
+      white: rawHeaders.White || 'White Player',
+      black: rawHeaders.Black || 'Black Player',
+      event: rawHeaders.Event || 'Casual Game',
+      date: rawHeaders.Date || new Date().toISOString().slice(0, 10),
+      result: rawHeaders.Result || '*',
+      whiteElo: rawHeaders.WhiteElo || '?',
+      blackElo: rawHeaders.BlackElo || '?'
+    },
+    accuracies: { white: 100, black: 100 },
+    acpl: { white: 0, black: 0 },
+    breakdown: { white: {}, black: {} },
+    engine: {
+      name: typeof Worker === 'function' ? 'Stockfish' : 'deterministic local minimax fallback',
+      version: 'Preparing engine analysis',
+      depth: 0,
+      threads: STOCKFISH_SEARCH.threads,
+      hashMb: STOCKFISH_SEARCH.hashMb,
+      multiPv: STOCKFISH_SEARCH.multiPv
+    },
+    positions,
+    totalPlies: history.length
+  };
+}
+
 /**
  * Analyzes each distinct position with one consistent local Stockfish search configuration.
  */
@@ -512,7 +575,8 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
   signal,
   depth = STOCKFISH_SEARCH.depth,
   threads = STOCKFISH_SEARCH.threads,
-  hashMb = STOCKFISH_SEARCH.hashMb
+  hashMb = STOCKFISH_SEARCH.hashMb,
+  multiPv = 1
 } = {}) {
   const chess = new Chess();
 
@@ -534,84 +598,113 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
   const analyzedPositions = [];
   let whiteCpLossSum = 0;
   let blackCpLossSum = 0;
-  const engine = typeof Worker === 'function' ? new StockfishEngine({ depth, threads, hashMb }) : null;
+  const poolSize = typeof Worker === 'function' && typeof navigator !== 'undefined'
+    ? Math.min(3, Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
+    : 1;
+  const engine = typeof Worker === 'function'
+    ? new StockfishPool({ depth, threads, hashMb, multiPv, size: poolSize })
+    : null;
   const sourceName = engine ? 'Stockfish' : 'deterministic local minimax fallback';
   const positionCache = new Map();
+  const preview = createAnalysisPreview(pgnText);
 
-  const evaluateFen = async (fen) => {
-    if (signal?.aborted) throw new DOMException('Analysis was cancelled.', 'AbortError');
+  const evaluateFen = (fen) => {
+    if (signal?.aborted) return Promise.reject(new DOMException('Analysis was cancelled.', 'AbortError'));
     if (positionCache.has(fen)) return positionCache.get(fen);
 
-    const position = new Chess(fen);
-    let result;
-    if (position.isGameOver()) {
-      const whiteCp = position.isCheckmate() ? (position.turn() === 'w' ? -10000 : 10000) : 0;
-      result = { source: engine ? 'stockfish-local' : 'local-minimax', whiteCp, mate: position.isCheckmate() ? 0 : null, depth: 0, nodes: 0, bestMoveUci: null, lines: [] };
-    } else if (engine) {
-      const uciResult = await engine.analyze(fen, signal);
-      const bestMoveUci = uciResult.bestMoveUci;
-      const bestMove = bestMoveUci ? position.moves({ verbose: true }).find((move) =>
-        move.from === bestMoveUci.slice(0, 2) &&
-        move.to === bestMoveUci.slice(2, 4) &&
-        (move.promotion || '') === (bestMoveUci[4] || '')
-      ) : null;
-      if (bestMoveUci && !bestMove) {
-        throw new Error(`Stockfish returned illegal move ${bestMoveUci} for FEN ${fen}.`);
-      }
-      const continuationSan = [];
-      const continuationBoard = new Chess(fen);
-      for (const uci of uciResult.pv) {
-        const move = continuationBoard.move({
-          from: uci.slice(0, 2),
-          to: uci.slice(2, 4),
-          promotion: uci[4]
+    const promise = (async () => {
+      const position = new Chess(fen);
+      let result;
+      if (position.isGameOver()) {
+        const whiteCp = position.isCheckmate() ? (position.turn() === 'w' ? -10000 : 10000) : 0;
+        result = { source: engine ? 'stockfish-local' : 'local-minimax', whiteCp, mate: position.isCheckmate() ? 0 : null, depth: 0, nodes: 0, bestMoveUci: null, lines: [] };
+      } else if (engine) {
+        const uciResult = await engine.analyze(fen, signal);
+        const bestMoveUci = uciResult.bestMoveUci;
+        const bestMove = bestMoveUci ? position.moves({ verbose: true }).find((move) =>
+          move.from === bestMoveUci.slice(0, 2) &&
+          move.to === bestMoveUci.slice(2, 4) &&
+          (move.promotion || '') === (bestMoveUci[4] || '')
+        ) : null;
+        if (bestMoveUci && !bestMove) {
+          throw new Error(`Stockfish returned illegal move ${bestMoveUci} for FEN ${fen}.`);
+        }
+        const seenLines = new Set();
+        const lines = (uciResult.lines || []).flatMap((line, index) => {
+          const continuationBoard = new Chess(fen);
+          const continuationSan = [];
+          const continuationUci = [];
+          for (const uci of line.pv || []) {
+            const move = continuationBoard.move({
+              from: uci.slice(0, 2),
+              to: uci.slice(2, 4),
+              ...(uci[4] ? { promotion: uci[4] } : {})
+            });
+            if (!move) break;
+            continuationSan.push(move.san);
+            continuationUci.push(uci);
+          }
+          if (!continuationUci.length || seenLines.has(continuationUci.join(' '))) return [];
+          seenLines.add(continuationUci.join(' '));
+          const lineMove = position.moves({ verbose: true }).find((move) =>
+            `${move.from}${move.to}${move.promotion || ''}` === continuationUci[0]
+          );
+          if (!lineMove) return [];
+          return [{
+            id: index + 1,
+            rank: index + 1,
+            cp: line.whiteCp,
+            mate: line.mate,
+            bestMoveUci: continuationUci[0],
+            bestMoveSan: lineMove.san,
+            continuationUci,
+            continuationSan,
+            movesText: continuationSan.join(' '),
+            depth: line.depth,
+            nodes: line.nodes
+          }];
         });
-        if (!move) break;
-        continuationSan.push(move.san);
-      }
-      result = {
-        ...uciResult,
-        bestMove,
-        lines: [{
-          id: 1,
-          cp: uciResult.whiteCp,
-          mate: uciResult.mate,
-          bestMoveUci,
-          bestMoveSan: bestMove?.san || null,
-          continuationUci: uciResult.pv,
-          continuationSan,
-          movesText: continuationSan.join(' '),
-          depth: uciResult.depth,
-          nodes: uciResult.nodes
-        }]
-      };
-    } else {
-      const search = findBestMove(position, 2);
-      const bestMoveUci = search.bestMove
-        ? `${search.bestMove.from}${search.bestMove.to}${search.bestMove.promotion || ''}`
-        : null;
-      result = {
-        source: 'local-minimax',
-        engineVersion: 'built-in deterministic minimax',
-        depth: 2,
-        nodes: null,
-        whiteCp: search.bestScore,
-        mate: null,
-        bestMoveUci,
-        bestMove: search.bestMove,
-        lines: search.lines.map((line) => ({
-          ...line,
-          continuationUci: [line.bestMoveUci],
-          continuationSan: line.continuationSan,
+        result = {
+          ...uciResult,
+          bestMove,
+          lines
+        };
+      } else {
+        const search = findBestMove(position, 2);
+        const bestMoveUci = search.bestMove
+          ? `${search.bestMove.from}${search.bestMove.to}${search.bestMove.promotion || ''}`
+          : null;
+        result = {
+          source: 'local-minimax',
+          engineVersion: 'built-in deterministic minimax',
           depth: 2,
-          nodes: null
-        }))
-      };
-    }
+          nodes: null,
+          whiteCp: search.bestScore,
+          mate: null,
+          bestMoveUci,
+          bestMove: search.bestMove,
+          lines: search.lines.map((line) => ({
+            ...line,
+            continuationUci: [line.bestMoveUci],
+            continuationSan: line.continuationSan,
+            depth: 2,
+            nodes: null
+          }))
+        };
+      }
+      return result;
+    })();
 
-    positionCache.set(fen, result);
-    return result;
+    positionCache.set(fen, promise);
+    return promise;
   };
+
+  // Pre-dispatch all unique game positions into the worker pool concurrently
+  if (engine) {
+    for (const pos of preview.positions) {
+      evaluateFen(pos.fen).catch(() => {});
+    }
+  }
 
   try {
     let currentEval = await evaluateFen(analysisEngine.fen());
@@ -637,6 +730,7 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
       const isWhite = analysisEngine.turn() === 'w';
       const fenBefore = analysisEngine.fen();
       const chessBefore = new Chess(fenBefore);
+      const inCheckBefore = chessBefore.isCheck();
       const bestScore = currentEval.whiteCp;
       let bestMove = currentEval.bestMove;
       const hangingBefore = findHangingPieces(chessBefore, isWhite ? 'w' : 'b');
@@ -653,6 +747,7 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
       if (!bestMove) throw new Error(`No legal best move found for FEN ${fenBefore}.`);
 
       const executed = analysisEngine.move(move);
+      const givesCheck = analysisEngine.isCheck();
       const hangingAfter = findHangingPieces(analysisEngine, isWhite ? 'w' : 'b');
       const hangingPieces = hangingAfter.filter((piece) =>
         !hangingBefore.some((before) => before.square === piece.square && before.piece === piece.piece)
@@ -706,10 +801,23 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
         classification,
         accuracy: moveAccuracy,
         cpLoss: Math.round(cpLoss),
-        bestMove: { san: bestMove.san, from: bestMove.from, to: bestMove.to },
-        lines: currentEval.lines,
-        depth: currentEval.depth,
-        nodes: currentEval.nodes,
+        cpLossRaw: cpLoss,
+        winLoss,
+        scoreBefore: bestScore,
+        mateBefore: currentEval.mate,
+        scoreAfter: playedScore,
+        inCheckBefore,
+        givesCheck,
+        isCapture: executed.isCapture(),
+        bestMove: {
+          san: bestMove.san,
+          from: bestMove.from,
+          to: bestMove.to,
+          uci: `${bestMove.from}${bestMove.to}${bestMove.promotion || ''}`
+        },
+        lines: afterEval.lines,
+        depth: afterEval.depth,
+        nodes: afterEval.nodes,
         mate: afterEval.mate,
         critical: cpLoss >= 200 || currentEval.mate !== null || hangingPieces.length > 0,
         missedTactic,
@@ -719,10 +827,26 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
       currentEval = afterEval;
 
       if (onProgress) {
+        const partialPositions = [
+          ...analyzedPositions,
+          ...preview.positions.slice(analyzedPositions.length)
+        ];
         onProgress({
           current: i + 1,
           total: history.length,
-          percentage: Math.round(((i + 1) / history.length) * 100)
+          percentage: Math.round(((i + 1) / history.length) * 100),
+          report: {
+            ...preview,
+            positions: partialPositions,
+            engine: {
+              name: sourceName,
+              version: engine?.engineVersion || 'built-in deterministic minimax',
+              depth: engine?.depth || 2,
+              threads: engine?.settings.threads || 1,
+              hashMb: engine?.settings.hashMb || 0,
+              multiPv: engine?.settings.multiPv || 1
+            }
+          }
         });
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
@@ -786,7 +910,7 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
       depth: engine?.depth || 2,
       threads: engine?.settings.threads || 1,
       hashMb: engine?.settings.hashMb || 0,
-      multiPv: STOCKFISH_SEARCH.multiPv
+      multiPv: engine?.settings.multiPv || 1
     },
     positions: analyzedPositions,
     totalPlies: history.length

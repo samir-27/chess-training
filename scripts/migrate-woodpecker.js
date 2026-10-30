@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { migrateWoodpeckerData } from '../src/services/woodpeckerMigration.js';
+import { migrateWoodpeckerData } from '../frontend/src/services/woodpeckerMigration.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 console.log('🪵 Running Woodpecker Method Migration...');
 const { course, stats } = migrateWoodpeckerData();
 
-const outputPath = path.resolve(__dirname, '../src/data/woodpeckerCourse.json');
+const outputPath = path.resolve(__dirname, '../frontend/src/data/woodpeckerCourse.json');
 fs.writeFileSync(outputPath, JSON.stringify(course, null, 2), 'utf-8');
 
 console.log('✅ Woodpecker Migration Complete!');

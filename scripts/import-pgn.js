@@ -19,7 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { importPgnToCourse } from '../src/services/pgnImporter.js';
+import { importPgnToCourse } from '../frontend/src/services/pgnImporter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +27,7 @@ const __dirname = path.dirname(__filename);
 function parseArgs(args) {
   const options = {
     inputs: [],
-    outDir: path.resolve(__dirname, '../src/data/courses'),
+    outDir: path.resolve(__dirname, '../frontend/src/data/courses'),
     title: null,
     author: null,
     category: null,

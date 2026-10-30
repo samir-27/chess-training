@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import AppShell from './components/layout/AppShell.jsx';
 import DashboardView from './components/dashboard/DashboardView.jsx';
-import CourseLibraryView from './components/library/CourseLibraryView.jsx';
 import TrainingWorkspace from './components/training/TrainingWorkspace.jsx';
 import WoodpeckerView from './components/woodpecker/WoodpeckerView.jsx';
 import AnalyticsView from './components/analytics/AnalyticsView.jsx';
@@ -9,26 +8,77 @@ import AboutAppView from './components/about/AboutAppView.jsx';
 import SettingsView from './components/settings/SettingsView.jsx';
 import GameAnalysisView from './components/analysis/GameAnalysisView.jsx';
 import { storage } from './services/storageService.js';
+import { getLastAnalysisId } from './services/analysisRepository.js';
 import './App.css';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [trainingContext, setTrainingContext] = useState(null);
+function getRoute(pathname) {
+  if (pathname === '/') return { tab: 'dashboard', analysisId: null, notFound: false };
+  if (pathname === '/analysis') return { tab: 'analysis', analysisId: null, notFound: false };
+  const analysisMatch = pathname.match(/^\/analysis\/([a-z\d_-]{1,80})$/i);
+  if (analysisMatch) return { tab: 'analysis', analysisId: analysisMatch[1], notFound: false };
 
-  // Initialize default training context on mount if none selected
-  useEffect(() => {
-    if (!trainingContext) {
-      const course = storage.getCourseById('course-woodpecker-method');
-      if (course && course.chapters[0]?.lessons[0]) {
-        setTrainingContext({
+  const routes = {
+    '/woodpecker': 'woodpecker',
+    '/analytics': 'analytics',
+    '/about': 'about_app',
+    '/settings': 'settings',
+    '/training': 'training'
+  };
+  return routes[pathname]
+    ? { tab: routes[pathname], analysisId: null, notFound: false }
+    : { tab: 'not_found', analysisId: null, notFound: true };
+}
+
+const TAB_PATHS = {
+  dashboard: '/',
+  woodpecker: '/woodpecker',
+  analysis: '/analysis',
+  analytics: '/analytics',
+  about_app: '/about',
+  settings: '/settings',
+  training: '/training'
+};
+
+export default function App() {
+  const [route, setRoute] = useState(() => getRoute(window.location.pathname));
+  const [trainingContext, setTrainingContext] = useState(() => {
+    const course = storage.getCourseById('course-woodpecker-method');
+    return course && course.chapters[0]?.lessons[0]
+      ? {
           course,
           chapter: course.chapters[0],
           lesson: course.chapters[0].lessons[0],
           cycleId: null
-        });
-      }
-    }
+        }
+      : null;
+  });
+  const [lastAnalysisId, setLastAnalysisId] = useState(() => getLastAnalysisId());
+  const activeTab = route.tab;
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setRoute(getRoute(window.location.pathname));
+      setLastAnalysisId(getLastAnalysisId());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  const navigateToPath = (path, { replace = false } = {}) => {
+    if (window.location.pathname !== path) {
+      if (replace) window.history.replaceState({}, '', path);
+      else window.history.pushState({}, '', path);
+    }
+    setRoute(getRoute(path));
+  };
+
+  const navigateToTab = (tab) => {
+    if (tab === 'analysis' && lastAnalysisId) {
+      navigateToPath(`/analysis/${lastAnalysisId}`);
+      return;
+    }
+    navigateToPath(TAB_PATHS[tab] || '/');
+  };
 
   // Launch training workspace with specific course/chapter/lesson
   const handleStartTraining = ({ course, chapter, lesson, cycleId = null }) => {
@@ -38,7 +88,7 @@ export default function App() {
       lesson,
       cycleId
     });
-    setActiveTab('training');
+    navigateToTab('training');
   };
 
   // Navigate to next lesson in chapter or cycle
@@ -127,13 +177,13 @@ export default function App() {
   const hasPrev = Boolean(trainingContext);
 
   return (
-    <AppShell activeTab={activeTab} onTabChange={setActiveTab}>
+    <AppShell activeTab={activeTab} onTabChange={navigateToTab}>
       {activeTab === 'dashboard' && (
         <DashboardView
           onStartTraining={handleStartTraining}
-          onNavigateWoodpecker={() => setActiveTab('woodpecker')}
-          onNavigateAnalysis={() => setActiveTab('analysis')}
-          onNavigateAnalytics={() => setActiveTab('analytics')}
+          onNavigateWoodpecker={() => navigateToTab('woodpecker')}
+          onNavigateAnalysis={() => navigateToTab('analysis')}
+          onNavigateAnalytics={() => navigateToTab('analytics')}
         />
       )}
 
@@ -144,21 +194,29 @@ export default function App() {
       )}
 
       {activeTab === 'training' && (
-        <TrainingWorkspace
+        trainingContext ? <TrainingWorkspace
           course={trainingContext?.course}
           chapter={trainingContext?.chapter}
           lesson={trainingContext?.lesson}
           cycleId={trainingContext?.cycleId}
-          onBack={() => setActiveTab('woodpecker')}
+          onBack={() => navigateToTab('woodpecker')}
           onNext={handleNextLesson}
           onPrev={handlePrevLesson}
           hasNext={hasNext}
           hasPrev={hasPrev}
-        />
+        /> : <WoodpeckerView onStartTraining={handleStartTraining} />
       )}
 
       {activeTab === 'analysis' && (
-        <GameAnalysisView />
+        <GameAnalysisView
+          analysisId={route.analysisId}
+          onAnalysisCreated={(analysisId) => {
+            setLastAnalysisId(analysisId);
+            navigateToPath(`/analysis/${analysisId}`);
+          }}
+          onNewAnalysis={() => navigateToPath('/analysis')}
+          onSelectAnalysis={(analysisId) => navigateToPath(`/analysis/${analysisId}`)}
+        />
       )}
 
       {activeTab === 'analytics' && (
@@ -167,14 +225,28 @@ export default function App() {
 
       {activeTab === 'about_app' && (
         <AboutAppView
-          onNavigateWoodpecker={() => setActiveTab('woodpecker')}
-          onNavigateAnalysis={() => setActiveTab('analysis')}
-          onNavigateAnalytics={() => setActiveTab('analytics')}
+          onNavigateWoodpecker={() => navigateToTab('woodpecker')}
+          onNavigateAnalysis={() => navigateToTab('analysis')}
+          onNavigateAnalytics={() => navigateToTab('analytics')}
         />
       )}
 
       {activeTab === 'settings' && (
         <SettingsView />
+      )}
+
+      {route.notFound && (
+        <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+          <h1 className="text-2xl font-bold text-white">Page not found</h1>
+          <p className="mt-2 text-sm text-slate-400">This Chess Wizards route does not exist.</p>
+          <button
+            type="button"
+            onClick={() => navigateToPath('/')}
+            className="mt-5 px-4 py-2 rounded-xl bg-amber-500 text-slate-950 text-sm font-bold"
+          >
+            Go to dashboard
+          </button>
+        </div>
       )}
     </AppShell>
   );
