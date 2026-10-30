@@ -22,6 +22,7 @@ import { centipawnsToWinChance, Classification, CLASSIFICATION_META } from '../.
 import {
   createVariationAtPosition,
   createVariationWithLine,
+  extractMovesFromLine,
   getVariationMoveList,
   getVariationOriginalPrefixLength,
   getVariationPosition,
@@ -32,6 +33,7 @@ import {
 import { STOCKFISH_SEARCH, StockfishEngine } from '../../services/stockfishEngine.js';
 import { createCommentaryFallback } from '../../services/moveCommentary.js';
 import { soundManager } from '../../services/audioService.js';
+import { lookupBookPosition } from '../../services/openingBookService.js';
 
 function uciToMove(uci) {
   return {
@@ -48,36 +50,6 @@ function formatEvaluation(result) {
   }
   const cp = Number(result.whiteCp ?? result.score ?? 0);
   return `${cp >= 0 ? '+' : ''}${(cp / 100).toFixed(1)}`;
-}
-
-function normalizeUciLine(fen, uciMoves) {
-  const chess = new Chess(fen);
-  const moves = [];
-  const san = [];
-  const sanList = [];
-  for (const uci of uciMoves || []) {
-    if (typeof uci !== 'string' || !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(uci)) break;
-    const moveInput = uciToMove(uci);
-    const legalMove = chess.moves({ verbose: true }).find((move) =>
-      move.from === moveInput.from &&
-      move.to === moveInput.to &&
-      (move.promotion || undefined) === (moveInput.promotion || undefined)
-    );
-    if (!legalMove) break;
-    const color = chess.turn();
-    const moveNumber = Number(chess.fen().split(' ')[5]);
-    const move = chess.move(moveInput);
-    moves.push(uci);
-    san.push(move.san);
-    sanList.push({
-      uci,
-      san: move.san,
-      color,
-      moveNumber,
-      label: color === 'w' ? `${moveNumber}. ${move.san}` : `${moveNumber}... ${move.san}`
-    });
-  }
-  return { moves, san: san.join(' '), sanList };
 }
 
 // Icon badges matching screenshot
@@ -273,14 +245,19 @@ export default function InteractiveAnalysisBoard({
     };
   }, [fen, engineEnabled, depth, chess, isOriginalPosition, frozenLine, analysisCache]);
 
-  // Inform parent of resume state
+  // Inform parent of resume state (guarded against duplicate renders)
+  const lastResumePayloadKeyRef = useRef(null);
   useEffect(() => {
+    const isBranch = variation.moves.length > originalPrefixLength;
+    const key = `${currentPly}|${fen}|${isBranch ? `${variation.cursor}:${variation.moves.length}` : 'main'}`;
+    if (lastResumePayloadKeyRef.current === key) return;
+    lastResumePayloadKeyRef.current = key;
     onResumeChange?.({
       selectedPly: currentPly,
       currentFen: fen,
-      variation: variation.moves.length > originalPrefixLength ? variation : null
+      variation: isBranch ? variation : null
     });
-  }, [currentPly, fen, variation, originalPrefixLength, onResumeChange]);
+  }, [currentPly, fen, variation.cursor, variation.moves.length, originalPrefixLength, onResumeChange]);
 
   // Sound effects on move
   const playSoundEffect = useCallback((move) => {
@@ -427,9 +404,11 @@ export default function InteractiveAnalysisBoard({
 
       // Descriptive standard commentary
       const cls = currentPos.classification;
+      if (cls === Classification.BOOK) {
+        return currentPos.explanation || `📖 Standard theoretical book move.`;
+      }
       if (cls === Classification.BEST) return `★ Best move! Accurately plays the engine's top recommendation.`;
       if (cls === Classification.EXCELLENT) return `✓ Solid move, preserving the balanced evaluation.`;
-      if (cls === Classification.BOOK) return `Standard opening move according to theoretical practice.`;
       if (cls === Classification.BRILLIANT) return `Spectacular tactical move that maintains a decisive advantage!`;
       if (cls === Classification.BLUNDER) return `Critical blunder. Gives away significant advantage; ${currentPos.bestMove?.san || 'better move'} was stronger.`;
       if (cls === Classification.MISTAKE) return `Clear mistake that weakens the position.`;
@@ -437,6 +416,39 @@ export default function InteractiveAnalysisBoard({
     }
     return 'Exploratory branch move. Stockfish is searching this line.';
   }, [isAnalyzing, analysisProgress, frozenLine, variation.cursor, commentary, positions]);
+
+  // Current opening name based on theoretical book or position
+  const currentOpeningName = useMemo(() => {
+    const bookEntry = lookupBookPosition(fen);
+    if (bookEntry && bookEntry.name && bookEntry.name !== 'Starting Position') {
+      return `${bookEntry.eco} · ${bookEntry.name}`;
+    }
+    const currentPos = positions[variation.cursor];
+    if (currentPos?.explanation && currentPos.classification === Classification.BOOK) {
+      return currentPos.explanation.replace(/^Book move \([^)]+\)\.\s*/, '');
+    }
+    return null;
+  }, [fen, positions, variation.cursor]);
+
+  // Overall game opening
+  const gameOpening = useMemo(() => {
+    if (analysisResult?.opening?.name) {
+      return analysisResult.opening;
+    }
+    for (let i = positions.length - 1; i >= 1; i--) {
+      const pos = positions[i];
+      if (pos.classification === Classification.BOOK || pos.isBook) {
+        if (pos.eco && pos.opening) {
+          return { eco: pos.eco, name: pos.opening };
+        }
+      }
+    }
+    return null;
+  }, [analysisResult, positions]);
+
+  const bookMovesCount = useMemo(() => {
+    return positions.slice(1).filter((p) => p.classification === Classification.BOOK || p.isBook).length;
+  }, [positions]);
 
   // Classification summary stats for Report tab
   const stats = useMemo(() => {
@@ -905,6 +917,95 @@ export default function InteractiveAnalysisBoard({
                     ))}
                   </div>
                 </div>
+
+                {/* 4. Game Opening Card (if available) */}
+                {gameOpening && (
+                  <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📖</span>
+                      <div>
+                        <div className="font-bold text-amber-300">
+                          {gameOpening.eco} · {gameOpening.name}
+                        </div>
+                        <div className="text-[10px] text-amber-200/70">
+                          Opening Theory ({bookMovesCount} book {bookMovesCount === 1 ? 'move' : 'moves'})
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold uppercase tracking-wider">
+                      Book
+                    </span>
+                  </div>
+                )}
+
+                {/* 5. Game Moves Review Table */}
+                <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-2 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-800 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    <span>Game Moves Review</span>
+                    <span className="font-mono text-[9px] lowercase text-slate-500">{positions.length - 1} moves</span>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto pr-1 space-y-0.5 scrollbar-thin">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[10px] text-slate-400 border-b border-slate-800/80 uppercase font-semibold">
+                          <th className="py-1 px-1.5 w-14">Move</th>
+                          <th className="py-1 px-1.5">Played Move</th>
+                          <th className="py-1 px-1.5">Classification</th>
+                          <th className="py-1 px-1.5 text-right">Evaluation</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/40 font-mono text-[11px]">
+                        {positions.slice(1).map((pos) => {
+                          const isCurrent = isOriginalPosition && variation.cursor === pos.ply;
+                          const isBook = pos.classification === Classification.BOOK || pos.isBook;
+                          const moveLabel = pos.isWhite ? `${pos.moveNumber || Math.ceil(pos.ply / 2)}` : `${pos.moveNumber || Math.ceil(pos.ply / 2)}...`;
+                          const evalText = isBook ? 'Theory' : formatEvaluation(pos);
+                          const meta = CLASSIFICATION_META[pos.classification] || (isBook ? CLASSIFICATION_META[Classification.BOOK] : null);
+
+                          return (
+                            <tr
+                              key={pos.ply}
+                              onClick={() => handleSelectPly(pos.ply)}
+                              className={`cursor-pointer transition-colors ${
+                                isCurrent
+                                  ? 'bg-amber-400/20 text-white font-bold'
+                                  : 'hover:bg-slate-800/60 text-slate-300'
+                              }`}
+                            >
+                              <td className="py-1 px-1.5 text-slate-400">{moveLabel}</td>
+                              <td className="py-1 px-1.5 font-bold text-slate-100">{pos.san}</td>
+                              <td className="py-1 px-1.5">
+                                {isBook ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                    <span>📖</span>
+                                    <span>BOOK</span>
+                                  </span>
+                                ) : meta ? (
+                                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${meta.badgeColor}`}>
+                                    <span>{meta.symbol}</span>
+                                    <span>{meta.label}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 text-[10px]">—</span>
+                                )}
+                              </td>
+                              <td className="py-1 px-1.5 text-right">
+                                {isBook ? (
+                                  <span className="text-amber-400 font-semibold font-sans text-[11px]">Theory</span>
+                                ) : (
+                                  <span className={Number(pos.score) > 50 ? 'text-emerald-400' : Number(pos.score) < -50 ? 'text-red-400' : 'text-slate-300'}>
+                                    {evalText}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -992,6 +1093,14 @@ export default function InteractiveAnalysisBoard({
                   ) : (
                     /* Default Engine Lines (when not in a frozen subline) */
                     <>
+                      {/* Active Opening Name Banner */}
+                      {currentOpeningName && (
+                        <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+                          <span className="text-sm">📖</span>
+                          <span className="truncate">{currentOpeningName}</span>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
                         <span className="flex items-center gap-1.5 text-amber-400 font-bold">
                           <Cpu size={13} /> Depth: {depth}
@@ -1001,41 +1110,63 @@ export default function InteractiveAnalysisBoard({
 
                       {currentEvaluation?.lines?.length ? (
                         currentEvaluation.lines.slice(0, 3).map((line, idx) => {
-                          const normalized = normalizeUciLine(fen, line.pv || line.continuationUci);
-                          const displayMoves = normalized.san || line.movesText || line.continuationSan?.join(' ') || '...';
+                          const extracted = extractMovesFromLine(fen, line);
+                          const displayMoves = extracted.san || line.movesText || line.continuationSan?.join(' ') || '...';
+
+                          const handleExploreLine = (stepIndex = 0) => {
+                            if (!extracted.moves.length) return;
+                            const newVar = createVariationWithLine(variation, extracted.moves);
+                            const targetCursor = variation.cursor + Math.min(stepIndex + 1, extracted.moves.length);
+                            setVariation(setVariationCursor(newVar, targetCursor));
+                            setFrozenLine({
+                              rootPly: variation.cursor,
+                              evalText: formatEvaluation(line),
+                              evalCp: line.whiteCp ?? line.cp ?? 0,
+                              evalMate: line.mate ?? null,
+                              depth: line.depth || depth,
+                              sanMoves: extracted.sanList,
+                              uciMoves: extracted.moves
+                            });
+                          };
+
                           return (
                             <div
                               key={idx}
-                              onClick={() => {
-                                if (normalized.moves.length) {
-                                  const newVar = createVariationWithLine(variation, normalized.moves);
-                                  setVariation(setVariationCursor(newVar, variation.cursor + 1));
-                                  setFrozenLine({
-                                    rootPly: currentPly,
-                                    evalText: formatEvaluation(line),
-                                    evalCp: line.whiteCp ?? line.cp ?? 0,
-                                    evalMate: line.mate ?? null,
-                                    depth: line.depth || depth,
-                                    sanMoves: normalized.sanList,
-                                    uciMoves: normalized.moves
-                                  });
-                                }
-                              }}
-                              className="p-2 rounded-lg bg-slate-950 border border-slate-800/90 hover:border-sky-500/50 hover:bg-slate-900/60 cursor-pointer transition-all space-y-1 text-xs group"
+                              onClick={() => handleExploreLine(0)}
+                              className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/90 hover:border-sky-500/60 hover:bg-slate-900/80 cursor-pointer transition-all space-y-1.5 text-xs group shadow-sm"
                               title="Click to freeze and explore this line"
                             >
                               <div className="flex items-center justify-between gap-1 font-mono">
-                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 font-bold text-[11px]">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 font-bold text-[11px] border border-slate-700/80">
                                   {formatEvaluation(line)}
                                 </span>
-                                <span className="text-[10px] text-sky-400 opacity-80 group-hover:opacity-100 flex items-center gap-1 font-sans font-medium">
+                                <span className="text-[11px] text-sky-400 group-hover:text-sky-300 flex items-center gap-1 font-sans font-semibold">
                                   <span>Explore line</span>
                                   <span>→</span>
                                 </span>
                               </div>
-                              <p className="text-slate-300 font-mono text-[11px] leading-tight break-words">
-                                {displayMoves}
-                              </p>
+
+                              {extracted.sanList.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 font-mono text-[11px] leading-tight">
+                                  {extracted.sanList.map((m, mIdx) => (
+                                    <span
+                                      key={mIdx}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleExploreLine(mIdx);
+                                      }}
+                                      className="px-1.5 py-0.5 rounded bg-slate-900/90 hover:bg-sky-500/30 hover:text-sky-200 text-slate-300 border border-slate-800 hover:border-sky-500/40 transition-colors"
+                                      title={`Jump to ${m.label}`}
+                                    >
+                                      {m.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-slate-300 font-mono text-[11px] leading-tight break-words">
+                                  {displayMoves}
+                                </p>
+                              )}
                             </div>
                           );
                         })

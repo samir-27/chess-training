@@ -296,7 +296,7 @@ describe('Game analysis engine', () => {
 
   test('classification requires both evaluation measures and catches missed wins', () => {
     const chess = new Chess();
-    const played = chess.move('e4');
+    const played = chess.move('h4');
     const missedWin = classifyMove({
       movePlayed: played,
       bestMove: { san: 'Nf3' },

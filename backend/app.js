@@ -79,7 +79,7 @@ export function createApp() {
   });
   const analysisWriteLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 40,
+    limit: 1000,
     standardHeaders: 'draft-8',
     legacyHeaders: false
   });

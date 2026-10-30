@@ -78,6 +78,7 @@ export default function GameAnalysisView({
   const lastInitialPgnRef = useRef(null);
   const resumeSaveTimerRef = useRef(null);
   const resumeSaveRunRef = useRef(0);
+  const lastSavedResumeKeyRef = useRef(null);
 
   const startAnalysis = useCallback(async (pgnText) => {
     if (!pgnText.trim()) return;
@@ -209,15 +210,17 @@ export default function GameAnalysisView({
     return () => { active = false; };
   }, [analysisId]);
 
-  // Debounced resume saving
+  // Debounced resume saving (avoids redundant network writes)
   const handleResumeChange = useCallback(({ selectedPly, currentFen, variation }) => {
     if (!analysisId) return;
-    const saveRun = ++resumeSaveRunRef.current;
+    const key = `${selectedPly}:${currentFen}:${variation?.cursor || 0}:${variation?.moves?.length || 0}`;
+    if (lastSavedResumeKeyRef.current === key) return;
     clearTimeout(resumeSaveTimerRef.current);
     resumeSaveTimerRef.current = setTimeout(() => {
+      lastSavedResumeKeyRef.current = key;
       saveAnalysisResume(analysisId, { selectedPly, currentFen, variation })
         .catch(() => {});
-    }, 600);
+    }, 1500);
   }, [analysisId]);
 
   const handleDeleteAnalysis = async (id) => {

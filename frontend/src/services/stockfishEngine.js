@@ -1,12 +1,37 @@
 export const STOCKFISH_SEARCH = Object.freeze({
   depth: 16,
+  deepDepth: 20,
   threads: 1,
   hashMb: 16,
-  multiPv: 3
+  multiPv: 3,
+  defaultMultiPv: 1
 });
-const MAX_SEARCH_MS = 120_000;
 
 const APP_BASE_URL = import.meta.env?.BASE_URL || '/';
+
+/**
+ * Resolves the URL for the lightweight Stockfish Web Worker.
+ * Automatically chooses the lightweight WebAssembly build when supported by the browser,
+ * falling back to the standard JS script if necessary.
+ */
+export function getStockfishWorkerUrl() {
+  const isWasmSupported = typeof WebAssembly === 'object' &&
+    typeof WebAssembly.validate === 'function' &&
+    WebAssembly.validate(new Uint8Array([0x0, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
+
+  return isWasmSupported ? `${APP_BASE_URL}stockfish.wasm.js` : `${APP_BASE_URL}stockfish.js`;
+}
+
+/**
+ * Calculates an adaptive search time limit based on depth and device concurrency.
+ */
+export function getAdaptiveSearchTimeLimit(depth = 16) {
+  const concurrency = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 4;
+  const factor = concurrency <= 2 ? 1.5 : 1.0;
+  if (depth <= 16) return Math.round(15_000 * factor);
+  if (depth <= 20) return Math.round(30_000 * factor);
+  return Math.round(60_000 * factor);
+}
 
 function abortError() {
   return new DOMException('Analysis was cancelled.', 'AbortError');
@@ -47,7 +72,7 @@ export class StockfishEngine {
     threads = STOCKFISH_SEARCH.threads,
     hashMb = STOCKFISH_SEARCH.hashMb,
     multiPv = STOCKFISH_SEARCH.multiPv,
-    workerUrl = `${APP_BASE_URL}stockfish.js`
+    workerUrl = getStockfishWorkerUrl()
   } = {}) {
     if (typeof Worker !== 'function') {
       throw new Error('Web Workers are not available in this environment.');
@@ -58,7 +83,7 @@ export class StockfishEngine {
     this.waiters = [];
     this.activeSearch = null;
     this.readyPromise = null;
-    this.engineVersion = 'Stockfish (bundled)';
+    this.engineVersion = 'Stockfish Lite (WASM)';
     this.closed = false;
     this.options = new Map();
 
@@ -67,7 +92,9 @@ export class StockfishEngine {
       this.fail(new Error(event.message || 'Stockfish worker failed.'));
     });
 
-    this.settings = { threads, hashMb, multiPv };
+    // Hash clamped to max 32 MB for lightweight footprint
+    const safeHash = Math.min(32, Math.max(1, Number(hashMb) || 16));
+    this.settings = { threads: 1, hashMb: safeHash, multiPv };
   }
 
   handleMessage(line) {
@@ -270,11 +297,12 @@ export class StockfishEngine {
       };
       search.abort = () => this.stopSearch(search, abortError());
       search.timeout = setTimeout(() => {
+        const timeoutSeconds = Math.round(getAdaptiveSearchTimeLimit(this.depth) / 1000);
         this.stopSearch(
           search,
-          new Error(`Stockfish search exceeded its 120 second limit at depth ${this.depth}.`)
+          new Error(`Stockfish search exceeded its ${timeoutSeconds} second limit at depth ${this.depth}.`)
         );
-      }, MAX_SEARCH_MS);
+      }, getAdaptiveSearchTimeLimit(this.depth));
 
       this.activeSearch = search;
       signal?.addEventListener('abort', search.abort, { once: true });
@@ -325,16 +353,17 @@ export class StockfishEngine {
 export class StockfishPool {
   constructor({
     depth = STOCKFISH_SEARCH.depth,
-    threads = STOCKFISH_SEARCH.threads,
+    threads = 1,
     hashMb = STOCKFISH_SEARCH.hashMb,
     multiPv = 1,
     size = 1
   } = {}) {
     this.size = Math.max(1, size);
     this.depth = depth;
-    this.settings = { threads, hashMb, multiPv };
-    this.engineVersion = 'Stockfish (pool)';
-    this.engines = Array.from({ length: this.size }, () => new StockfishEngine({ depth, threads, hashMb, multiPv }));
+    const safeHash = Math.min(32, Math.max(1, Number(hashMb) || 16));
+    this.settings = { threads: 1, hashMb: safeHash, multiPv };
+    this.engineVersion = 'Stockfish Lite (WASM pool)';
+    this.engines = Array.from({ length: this.size }, () => new StockfishEngine({ depth, threads: 1, hashMb: safeHash, multiPv }));
     this.idle = [...this.engines];
     this.queue = [];
     this.closed = false;

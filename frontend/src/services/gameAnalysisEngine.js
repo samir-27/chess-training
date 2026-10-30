@@ -7,6 +7,7 @@
 
 import { Chess } from 'chess.js';
 import { StockfishEngine, StockfishPool, STOCKFISH_SEARCH } from './stockfishEngine.js';
+import { isOpeningBookMove } from './openingBookService.js';
 
 // Move Classification Types
 export const Classification = {
@@ -423,6 +424,21 @@ export function classifyMove({
 
   const winLoss = Math.max(0, winChanceBest - winChancePlayed);
 
+  // Theoretical Opening Book Move (first 24 plies)
+  // Classification is based on actual book membership, independent of engine centipawn differences.
+  if (plyIndex <= 24 && chessBefore) {
+    const bookInfo = isOpeningBookMove(chessBefore, movePlayed, plyIndex);
+    if (bookInfo) {
+      return {
+        classification: Classification.BOOK,
+        explanation: `Book move (${playedSan}). ${bookInfo.eco} · ${bookInfo.name}.`,
+        eco: bookInfo.eco,
+        openingName: bookInfo.name,
+        isBook: true
+      };
+    }
+  }
+
   // Brilliant is reserved for a best move that sacrifices attacked material while winning.
   if (isBrilliantSacrifice({
     movePlayed,
@@ -524,7 +540,9 @@ export function createAnalysisPreview(pgnText) {
     classification: null
   }];
   for (const [index, move] of history.entries()) {
+    const chessBefore = new Chess(replay.fen());
     const played = replay.move(move);
+    const bookInfo = index < 24 ? isOpeningBookMove(chessBefore, played, index + 1) : null;
     positions.push({
       ply: index + 1,
       moveNumber: Number(replay.fen().split(' ')[5]),
@@ -539,7 +557,10 @@ export function createAnalysisPreview(pgnText) {
       depth: 0,
       nodes: 0,
       lines: [],
-      classification: null
+      classification: bookInfo ? Classification.BOOK : null,
+      isBook: !!bookInfo,
+      eco: bookInfo?.eco || null,
+      opening: bookInfo?.name || null
     });
   }
   return {
@@ -598,11 +619,10 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
   const analyzedPositions = [];
   let whiteCpLossSum = 0;
   let blackCpLossSum = 0;
-  const poolSize = typeof Worker === 'function' && typeof navigator !== 'undefined'
-    ? Math.min(3, Math.max(1, (navigator.hardwareConcurrency || 4) - 1))
-    : 1;
+  const poolSize = 1;
+  const safeHash = Math.min(32, Math.max(1, Number(hashMb) || 16));
   const engine = typeof Worker === 'function'
-    ? new StockfishPool({ depth, threads, hashMb, multiPv, size: poolSize })
+    ? new StockfishPool({ depth, threads: 1, hashMb: safeHash, multiPv, size: poolSize })
     : null;
   const sourceName = engine ? 'Stockfish' : 'deterministic local minimax fallback';
   const positionCache = new Map();
@@ -699,13 +719,6 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
     return promise;
   };
 
-  // Pre-dispatch all unique game positions into the worker pool concurrently
-  if (engine) {
-    for (const pos of preview.positions) {
-      evaluateFen(pos.fen).catch(() => {});
-    }
-  }
-
   try {
     let currentEval = await evaluateFen(analysisEngine.fen());
     analyzedPositions.push({
@@ -763,9 +776,6 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
         currentEval.mate * moverSign > 0 &&
         !(afterEval.mate !== null && afterEval.mate * moverSign > 0);
 
-      if (isWhite) whiteCpLossSum += Math.min(10000, cpLoss);
-      else blackCpLossSum += Math.min(10000, cpLoss);
-
       const result = classifyMove({
         movePlayed: executed,
         bestMove,
@@ -779,13 +789,23 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
         chessBefore
       });
       const { classification } = result;
+      const isBookMove = classification === Classification.BOOK;
+      const effectiveCpLoss = isBookMove ? 0 : cpLoss;
+      const effectiveWinLoss = isBookMove ? 0 : winLoss;
+
+      // Book moves do not penalize player ACPL
+      if (!isBookMove) {
+        if (isWhite) whiteCpLossSum += Math.min(10000, effectiveCpLoss);
+        else blackCpLossSum += Math.min(10000, effectiveCpLoss);
+      }
+
       const annotations = [];
-      if (missedTactic) annotations.push('A forced mate was available and is no longer maintained.');
-      if (hangingPieces.length) {
+      if (!isBookMove && missedTactic) annotations.push('A forced mate was available and is no longer maintained.');
+      if (!isBookMove && hangingPieces.length) {
         annotations.push(`Leaves attacked, undefended piece(s) on ${hangingPieces.map((piece) => piece.square).join(', ')}.`);
       }
       const explanation = [result.explanation, ...annotations].join(' ');
-      const moveAccuracy = calculateMoveAccuracy(winLoss, bestWinChance);
+      const moveAccuracy = isBookMove ? 100 : calculateMoveAccuracy(effectiveWinLoss, bestWinChance);
 
       analyzedPositions.push({
         ply: i + 1,
@@ -799,10 +819,13 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
         score: playedScore,
         winChance: centipawnsToWinChance(playedScore),
         classification,
+        isBook: isBookMove,
+        eco: result.eco || null,
+        opening: result.openingName || null,
         accuracy: moveAccuracy,
-        cpLoss: Math.round(cpLoss),
-        cpLossRaw: cpLoss,
-        winLoss,
+        cpLoss: Math.round(effectiveCpLoss),
+        cpLossRaw: effectiveCpLoss,
+        winLoss: effectiveWinLoss,
         scoreBefore: bestScore,
         mateBefore: currentEval.mate,
         scoreAfter: playedScore,
@@ -819,9 +842,9 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
         depth: afterEval.depth,
         nodes: afterEval.nodes,
         mate: afterEval.mate,
-        critical: cpLoss >= 200 || currentEval.mate !== null || hangingPieces.length > 0,
-        missedTactic,
-        hangingPieces,
+        critical: !isBookMove && (effectiveCpLoss >= 200 || currentEval.mate !== null || hangingPieces.length > 0),
+        missedTactic: !isBookMove && missedTactic,
+        hangingPieces: isBookMove ? [] : hangingPieces,
         explanation
       });
       currentEval = afterEval;
@@ -882,6 +905,16 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
     return counts;
   };
 
+  // Identify the overall opening reached in the game (from the deepest theoretical book move)
+  let gameOpening = null;
+  for (let i = analyzedPositions.length - 1; i >= 1; i--) {
+    const p = analyzedPositions[i];
+    if (p.isBook && p.eco && p.opening) {
+      gameOpening = { eco: p.eco, name: p.opening };
+      break;
+    }
+  }
+
   return {
     headers: {
       white: headers.White || 'White Player',
@@ -892,6 +925,7 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
       whiteElo: headers.WhiteElo || '?',
       blackElo: headers.BlackElo || '?'
     },
+    opening: gameOpening,
     accuracies: {
       white: whiteAccuracy,
       black: blackAccuracy
@@ -906,11 +940,11 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
     },
     engine: {
       name: sourceName,
-      version: engine?.engineVersion || 'built-in deterministic minimax',
-      depth: engine?.depth || 2,
-      threads: engine?.settings.threads || 1,
-      hashMb: engine?.settings.hashMb || 0,
-      multiPv: engine?.settings.multiPv || 1
+      version: engine?.engineVersion || (typeof Worker === 'function' ? 'Stockfish Lite (WASM)' : 'built-in deterministic minimax'),
+      depth: engine ? engine.depth : 2,
+      threads: 1,
+      hashMb: safeHash,
+      multiPv: multiPv
     },
     positions: analyzedPositions,
     totalPlies: history.length

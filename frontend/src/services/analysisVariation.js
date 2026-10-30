@@ -126,3 +126,86 @@ export function getVariationOriginalPrefixLength(variation) {
   }
   return index;
 }
+
+
+export function extractMovesFromLine(fen, line) {
+  if (!fen || !line) return { moves: [], san: '', sanList: [] };
+
+  let tokens = [];
+  if (Array.isArray(line.pv) && line.pv.length > 0) {
+    tokens = line.pv;
+  } else if (Array.isArray(line.continuationUci) && line.continuationUci.length > 0) {
+    tokens = line.continuationUci;
+  } else if (Array.isArray(line.continuationSan) && line.continuationSan.length > 0) {
+    tokens = line.continuationSan;
+  } else if (typeof line.movesText === 'string' && line.movesText.trim()) {
+    tokens = line.movesText.trim().split(/\s+/);
+  } else if (typeof line.pv === 'string' && line.pv.trim()) {
+    tokens = line.pv.trim().split(/\s+/);
+  } else if (line.bestMoveUci) {
+    tokens = [line.bestMoveUci];
+  } else if (line.bestMoveSan) {
+    tokens = [line.bestMoveSan];
+  }
+
+  const chess = new Chess(fen);
+  const moves = [];
+  const san = [];
+  const sanList = [];
+
+  for (const rawToken of tokens) {
+    if (!rawToken || typeof rawToken !== 'string') continue;
+    const token = rawToken.replace(/^\d+[\.\s]+/, '').replace(/[\?!#\+]+$/, '').trim();
+    if (!token) continue;
+
+    let executedMove = null;
+
+    if (/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(token)) {
+      const uciLower = token.toLowerCase();
+      try {
+        executedMove = chess.move({
+          from: uciLower.slice(0, 2),
+          to: uciLower.slice(2, 4),
+          ...(uciLower[4] ? { promotion: uciLower[4] } : {})
+        });
+      } catch {}
+    }
+
+    if (!executedMove) {
+      try {
+        executedMove = chess.move(token);
+      } catch {}
+    }
+
+    if (!executedMove) {
+      const legalMoves = chess.moves({ verbose: true });
+      const matched = legalMoves.find(
+        (m) => m.san === token ||
+               m.san.replace(/[\+#]/, '') === token ||
+               (m.from + m.to + (m.promotion || '')) === token.toLowerCase()
+      );
+      if (matched) {
+        try {
+          executedMove = chess.move(matched);
+        } catch {}
+      }
+    }
+
+    if (!executedMove) break;
+
+    const uci = `${executedMove.from}${executedMove.to}${executedMove.promotion || ''}`;
+    const moveNumber = Number(chess.fen().split(' ')[5]);
+    const color = executedMove.color;
+    moves.push(uci);
+    san.push(executedMove.san);
+    sanList.push({
+      uci,
+      san: executedMove.san,
+      color,
+      moveNumber,
+      label: color === 'w' ? `${moveNumber}. ${executedMove.san}` : `${moveNumber}... ${executedMove.san}`
+    });
+  }
+
+  return { moves, san: san.join(' '), sanList };
+}
