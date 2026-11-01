@@ -7,19 +7,17 @@ import {
   Play,
   Zap,
   Activity,
-  BarChart3,
   ArrowRight,
   Sparkles,
   Calendar
 } from 'lucide-react';
 import { storage } from '../../services/storageService.js';
-import { getOverallStats } from '../../services/analyticsService.js';
+import { getOverallStats } from '../../services/trainingStatsService.js';
 
 export default function DashboardView({
   onStartTraining,
   onNavigateWoodpecker,
-  onNavigateAnalysis,
-  onNavigateAnalytics
+  onNavigateAnalysis
 }) {
   const [stats, setStats] = useState(() => getOverallStats());
   const [courses, setCourses] = useState(() => storage.getAllCourses());
@@ -202,16 +200,16 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Primary 3 Direct Action Hub: Woodpecker | Game Analysis | Analytics */}
+      {/* Primary 2 Direct Action Hub: Woodpecker | Game Analysis */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight">Quick Actions</h2>
-            <p className="text-xs text-slate-400">Directly resume training, analyze a game, or review statistics.</p>
+            <p className="text-xs text-slate-400">Directly resume training or analyze a game.</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
           {/* Action 1: Resume Woodpecker Method */}
           <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-amber-500/40 transition-all space-y-4">
@@ -244,7 +242,7 @@ export default function DashboardView({
               </div>
               <h3 className="text-lg font-bold text-white tracking-tight">Game Analysis & Review</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Paste any chess PGN to review move-by-move accuracy, a Stockfish principal variation, and blunder classifications.
+                Paste any chess PGN or Chess.com game to review move-by-move accuracy, a Stockfish principal variation, and blunder classifications.
               </p>
             </div>
 
@@ -253,27 +251,6 @@ export default function DashboardView({
               className="flex items-center justify-between w-full px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 text-sky-300 hover:text-white hover:border-sky-500/40 font-bold text-xs transition-all"
             >
               <span>Analyze Game PGN</span>
-              <ArrowRight size={16} />
-            </button>
-          </div>
-
-          {/* Action 3: Analytics & Heatmap */}
-          <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-emerald-500/40 transition-all space-y-4">
-            <div className="space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <BarChart3 size={24} />
-              </div>
-              <h3 className="text-lg font-bold text-white tracking-tight">Analytics & Heatmap</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Inspect your GitHub-style activity contribution calendar, training streaks, accuracy progression curves, and tactical volume history.
-              </p>
-            </div>
-
-            <button
-              onClick={onNavigateAnalytics}
-              className="flex items-center justify-between w-full px-4 py-3 rounded-2xl bg-slate-900 border border-slate-800 text-emerald-300 hover:text-white hover:border-emerald-500/40 font-bold text-xs transition-all"
-            >
-              <span>View Analytics & Streaks</span>
               <ArrowRight size={16} />
             </button>
           </div>

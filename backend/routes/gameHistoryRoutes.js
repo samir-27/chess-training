@@ -6,9 +6,8 @@ import {
   parsePgnGame,
   fetchChessComArchives,
   fetchChessComMonthlyGames,
-  saveGamesForUser,
-  selectRecentGames,
-  MAX_TEMPORARY_GAMES
+  fetchChessComRecentGames,
+  saveGamesForUser
 } from '../services/gameHistoryService.js';
 
 const router = Router();
@@ -21,47 +20,21 @@ function getUserId(req) {
   return req.ownerId;
 }
 
-async function saveTemporaryGames(req, parsedGames, totalFound = parsedGames.length) {
-  const existingGames = req.anonymousSession.temporaryGames || [];
-  const existingIds = new Set(existingGames.map((game) => game.fingerprint));
-  const importedIds = new Set();
-  const combinedGames = [...existingGames];
-  let duplicates = 0;
+/**
+ * Fetch 10 recent games for any Chess.com username (stateless, direct from Chess.com API)
+ */
+router.get('/chesscom/recent', asyncRoute(async (req, res) => {
+  const { username } = req.query;
+  if (typeof username !== 'string' || !username.trim()) {
+    return res.status(400).json({ error: 'Chess.com username is required.' });
+  }
 
-  parsedGames.forEach((game) => {
-    if (existingIds.has(game.fingerprint)) {
-      duplicates++;
-      return;
-    }
-    existingIds.add(game.fingerprint);
-    importedIds.add(game.fingerprint);
-    combinedGames.push(game);
-  });
-
-  const recentGames = selectRecentGames(combinedGames);
-  const recentIds = new Set(recentGames.map((game) => game.fingerprint));
-  const imported = [...importedIds].filter((fingerprint) => recentIds.has(fingerprint)).length;
-
-  req.anonymousSession.temporaryGames = recentGames;
-  await req.anonymousSession.save();
-
-  return {
-    totalFound,
-    imported,
-    duplicates,
-    skipped: Math.max(0, totalFound - imported - duplicates),
-    games: recentGames.map((game) => ({
-      id: game.fingerprint,
-      game: game.game,
-      source: 'chess.com',
-      pgn: game.pgn,
-      temporary: true
-    }))
-  };
-}
+  const result = await fetchChessComRecentGames(username.trim(), 10);
+  res.json(result);
+}));
 
 /**
- * List games for the current user with search, filtering, sorting, and pagination
+ * List saved games for the current user
  */
 router.get('/', asyncRoute(async (req, res) => {
   const userId = getUserId(req);
@@ -70,29 +43,24 @@ router.get('/', asyncRoute(async (req, res) => {
   const skip = (page - 1) * limit;
 
   const { search, result, dateFrom, dateTo, sort = 'newest', source } = req.query;
-
   const query = { userId };
 
-  // Search by player name
   if (typeof search === 'string' && search.trim()) {
     const term = search.trim();
     const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     query.$or = [{ 'game.white': regex }, { 'game.black': regex }];
   }
 
-  // Filter by result
   if (typeof result === 'string' && result.trim() && result !== 'all') {
     if (result === 'white' || result === '1-0') query['game.result'] = '1-0';
     else if (result === 'black' || result === '0-1') query['game.result'] = '0-1';
     else if (result === 'draw' || result === '1/2-1/2') query['game.result'] = '1/2-1/2';
   }
 
-  // Filter by source
   if (typeof source === 'string' && ['upload', 'paste', 'chess.com'].includes(source)) {
     query.source = source;
   }
 
-  // Filter by date range
   if (dateFrom || dateTo) {
     query['game.date'] = {};
     if (dateFrom) query['game.date'].$gte = String(dateFrom).trim();
@@ -133,44 +101,7 @@ router.get('/', asyncRoute(async (req, res) => {
 }));
 
 /**
- * Summary statistics for the user's game history
- */
-router.get('/stats', asyncRoute(async (req, res) => {
-  const userId = getUserId(req);
-
-  const total = await GameHistory.countDocuments({ userId });
-  const analyzed = await GameHistory.countDocuments({
-    userId,
-    'accuracy.white': { $ne: null }
-  });
-  const whiteWins = await GameHistory.countDocuments({ userId, 'game.result': '1-0' });
-  const blackWins = await GameHistory.countDocuments({ userId, 'game.result': '0-1' });
-  const draws = await GameHistory.countDocuments({ userId, 'game.result': '1/2-1/2' });
-
-  res.json({
-    total,
-    analyzed,
-    whiteWins,
-    blackWins,
-    draws
-  });
-}));
-
-router.get('/temporary', asyncRoute(async (req, res) => {
-  const games = selectRecentGames(req.anonymousSession.temporaryGames || []);
-  res.json({
-    games: games.map((game) => ({
-      id: game.fingerprint,
-      game: game.game,
-      source: 'chess.com',
-      pgn: game.pgn,
-      temporary: true
-    }))
-  });
-}));
-
-/**
- * Retrieve a single game by ID (used to start fresh analysis)
+ * Retrieve a single game by ID
  */
 router.get('/:id', asyncRoute(async (req, res) => {
   const userId = getUserId(req);
@@ -200,7 +131,7 @@ router.get('/:id', asyncRoute(async (req, res) => {
 }));
 
 /**
- * Import games from raw PGN text (uploaded file or pasted text)
+ * Import games from raw PGN text
  */
 router.post('/import/pgn', asyncRoute(async (req, res) => {
   const userId = getUserId(req);
@@ -247,71 +178,7 @@ router.post('/import/pgn', asyncRoute(async (req, res) => {
 }));
 
 /**
- * Discover monthly archives for a Chess.com username
- */
-router.get('/chesscom/archives', asyncRoute(async (req, res) => {
-  const { username } = req.query;
-  if (typeof username !== 'string' || !username.trim()) {
-    return res.status(400).json({ error: 'Chess.com username is required.' });
-  }
-
-  const archivesData = await fetchChessComArchives(username.trim());
-  res.json(archivesData);
-}));
-
-/**
- * Fetch and import games from a single Chess.com monthly archive URL
- */
-router.post('/chesscom/archive', asyncRoute(async (req, res) => {
-  const { archiveUrl } = req.body || {};
-
-  if (typeof archiveUrl !== 'string' || !archiveUrl.trim()) {
-    return res.status(400).json({ error: 'archiveUrl is required.' });
-  }
-
-  const parsedGames = await fetchChessComMonthlyGames(archiveUrl.trim());
-  const result = await saveTemporaryGames(req, parsedGames);
-
-  res.status(201).json({
-    totalFound: parsedGames.length,
-    imported: result.imported,
-    duplicates: result.duplicates,
-    skipped: result.skipped,
-    games: result.games
-  });
-}));
-
-/**
- * Batch import all or recent archives for a Chess.com username
- */
-router.post('/import/chesscom', asyncRoute(async (req, res) => {
-  const { username } = req.body || {};
-
-  if (typeof username !== 'string' || !username.trim()) {
-    return res.status(400).json({ error: 'Chess.com username is required.' });
-  }
-
-  const { archives } = await fetchChessComArchives(username.trim());
-  if (archives.length === 0) {
-    return res.json({ totalFound: 0, imported: 0, duplicates: 0, skipped: 0 });
-  }
-
-  const recentArchives = [...archives].reverse();
-  const parsedGames = [];
-  for (const [index, archiveUrl] of recentArchives.entries()) {
-    parsedGames.push(...await fetchChessComMonthlyGames(archiveUrl));
-    if (selectRecentGames(parsedGames).length >= MAX_TEMPORARY_GAMES) break;
-    if (index < recentArchives.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-  }
-
-  const result = await saveTemporaryGames(req, parsedGames);
-  res.json(result);
-}));
-
-/**
- * Update analysis accuracy on a game history entry (only saves White & Black accuracy scores)
+ * Update analysis accuracy on a game history entry
  */
 router.patch('/:id/accuracy', asyncRoute(async (req, res) => {
   const userId = getUserId(req);
@@ -359,28 +226,6 @@ router.delete('/:id', asyncRoute(async (req, res) => {
   }
 
   res.status(204).end();
-}));
-
-/**
- * Bulk delete multiple games from history
- */
-router.post('/bulk-delete', asyncRoute(async (req, res) => {
-  const userId = getUserId(req);
-  const { ids } = req.body || {};
-
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'Array of game IDs is required.' });
-  }
-
-  const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
-  const result = await GameHistory.deleteMany({
-    _id: { $in: validIds },
-    userId
-  });
-
-  res.json({
-    deletedCount: result.deletedCount
-  });
 }));
 
 export default router;

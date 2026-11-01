@@ -16,12 +16,8 @@
     "build": "vite build frontend",
     "lint": "eslint frontend",
     "preview": "vite preview frontend",
-    "test": "node --test frontend/src/tests/*.test.js backend/tests/*.test.js",
-    "test:frontend": "node --test frontend/src/tests/*.test.js",
-    "test:backend": "node --test backend/tests/*.test.js",
     "import:pgn": "node scripts/import-pgn.js",
-    "migrate:woodpecker": "node scripts/migrate-woodpecker.js",
-    "migrate:history": "node backend/scripts/migrateAnalysesToHistory.js"
+    "migrate:woodpecker": "node scripts/migrate-woodpecker.js"
   },
   "dependencies": {
     "@mliebelt/pgn-parser": "^1.4.19",

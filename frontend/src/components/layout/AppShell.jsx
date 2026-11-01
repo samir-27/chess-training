@@ -4,7 +4,6 @@ import {
   Zap,
   Swords,
   BookOpen,
-  BarChart3,
   HelpCircle,
   Settings,
   Flame,
@@ -15,14 +14,13 @@ import {
   LogOut
 } from 'lucide-react';
 import { storage } from '../../services/storageService.js';
-import { getOverallStats } from '../../services/analyticsService.js';
+import { getOverallStats } from '../../services/trainingStatsService.js';
 import AccountModal from './AccountModal.jsx';
 
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'woodpecker', label: 'Woodpecker Method', icon: Zap },
   { id: 'analysis', label: 'Game Analysis', icon: Activity },
-  { id: 'analytics', label: 'Analytics & Heatmap', icon: BarChart3 },
   { id: 'about_app', label: 'About the App', icon: HelpCircle },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];

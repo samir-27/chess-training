@@ -1,11 +1,20 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Activity,
-  Plus,
   Sparkles,
-  History,
-  RotateCcw,
-  Play
+  Globe,
+  ClipboardPaste,
+  Upload,
+  Play,
+  Loader2,
+  Calendar,
+  Clock,
+  User,
+  AlertCircle,
+  Search,
+  Filter,
+  Link as LinkIcon,
+  ChevronDown
 } from 'lucide-react';
 import {
   analyzePgnGame,
@@ -15,25 +24,20 @@ import { STOCKFISH_SEARCH } from '../../services/stockfishEngine.js';
 import { createCommentaryFallback, selectCommentaryCandidates } from '../../services/moveCommentary.js';
 import {
   createAnalysis,
-  deleteAnalysis,
   generateAnalysisCommentary,
-  getApiHealth,
-  listAnalyses,
   loadAnalysis,
   saveLocalCommentary,
   saveAnalysisResume
 } from '../../services/analysisRepository.js';
 import {
+  getChessComRecentGames,
+  getChessComGameById,
   getGameById,
-  updateGameAccuracy,
-  importPgnGames,
-  listGameHistory,
-  listTemporaryGames
+  updateGameAccuracy
 } from '../../services/gameHistoryRepository.js';
 import InteractiveAnalysisBoard from './InteractiveAnalysisBoard.jsx';
-import GameHistoryView from '../history/GameHistoryView.jsx';
 
-// Sample master games for immediate 1-click testing
+// Quick master sample games for testing
 const SAMPLE_GAMES = {
   kasparov: {
     title: 'Kasparov vs. Topalov (1999)',
@@ -68,51 +72,140 @@ export default function GameAnalysisView({
   initialPgn = '',
   analysisId = null,
   historyId = null,
-  showGameHistory = false,
   savedChessComUsername = '',
   onAnalysisCreated,
   onNewAnalysis,
-  onSelectAnalysis,
-  onNavigateHistory,
-  onAnalyzeGame,
-  onNavigateAnalysis
+  onSelectAnalysis
 }) {
+  // Mode: 'chesscom' | 'paste' | 'upload'
+  const [activeTab, setActiveTab] = useState('chesscom');
+
+  // Chess.com mode sub-tab: 'user' | 'url'
+  const [chessComSubMode, setChessComSubMode] = useState('user'); // 'user' | 'url'
+  const [usernameInput, setUsernameInput] = useState(savedChessComUsername || 'supreme_assassin');
+  const [gameUrlInput, setGameUrlInput] = useState('');
+
+  // Chess.com games state
+  const [games, setGames] = useState([]);
+  const [archives, setArchives] = useState([]);
+  const [selectedArchive, setSelectedArchive] = useState('');
+  const [gameLimit, setGameLimit] = useState(20);
+  const [isFetchingGames, setIsFetchingGames] = useState(false);
+  const [fetchError, setFetchError] = useState('');
+
+  // Filters for fetched games
+  const [filterFormat, setFilterFormat] = useState('all'); // 'all' | 'rapid' | 'blitz' | 'bullet' | 'daily'
+  const [opponentSearch, setOpponentSearch] = useState('');
+
+  // Paste / Upload state
   const [pgnInput, setPgnInput] = useState(initialPgn || '');
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef(null);
+
+  // Analysis engine state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [currentPly, setCurrentPly] = useState(0);
   const [initialVariation, setInitialVariation] = useState(null);
-  const [savedAnalyses, setSavedAnalyses] = useState([]);
-  const [recentHistoryGames, setRecentHistoryGames] = useState([]);
-  const [savedLoadError, setSavedLoadError] = useState('');
-  const [persistenceMessage, setPersistenceMessage] = useState('');
   const [commentary, setCommentary] = useState([]);
-  const [apiHealth, setApiHealth] = useState(null);
-  const [isLoadingSaved, setIsLoadingSaved] = useState(() => Boolean(analysisId || historyId));
+  const [loadError, setLoadError] = useState('');
   const [activeHistoryId, setActiveHistoryId] = useState(historyId || null);
 
   const analysisAbortRef = useRef(null);
   const analysisRunRef = useRef(0);
   const lastInitialPgnRef = useRef(null);
   const resumeSaveTimerRef = useRef(null);
-  const resumeSaveRunRef = useRef(0);
   const lastSavedResumeKeyRef = useRef(null);
 
-  const startAnalysis = useCallback(async (pgnText, forHistoryId = null, isTemporary = false) => {
+  // 1. Fetch Games from Chess.com by Username & Archive
+  const handleFetchGames = useCallback(async (targetUsername, limitToFetch = gameLimit, archiveToFetch = selectedArchive) => {
+    const userToFetch = (targetUsername || usernameInput || '').trim();
+    if (!userToFetch) {
+      setFetchError('Please enter a Chess.com username.');
+      return;
+    }
+
+    setIsFetchingGames(true);
+    setFetchError('');
+    try {
+      const data = await getChessComRecentGames(userToFetch, {
+        limit: limitToFetch,
+        archive: archiveToFetch || null
+      });
+      setGames(data.games || []);
+      setArchives(data.archives || []);
+      if (!data.games || data.games.length === 0) {
+        setFetchError(`No public games found for "${userToFetch}" in the selected timeframe.`);
+      }
+    } catch (err) {
+      setFetchError(err.message || 'Could not fetch games from Chess.com.');
+    } finally {
+      setIsFetchingGames(false);
+    }
+  }, [usernameInput, gameLimit, selectedArchive]);
+
+  // Auto-fetch on initial mount
+  useEffect(() => {
+    if (!analysisResult && !initialPgn && !analysisId && !historyId) {
+      handleFetchGames(usernameInput, 20);
+    }
+  }, []);
+
+  // When selected archive dropdown changes
+  const handleArchiveChange = (newArchiveUrl) => {
+    setSelectedArchive(newArchiveUrl);
+    handleFetchGames(usernameInput, 50, newArchiveUrl);
+  };
+
+  // Load more games
+  const handleLoadMore = () => {
+    const nextLimit = gameLimit + 20;
+    setGameLimit(nextLimit);
+    handleFetchGames(usernameInput, nextLimit, selectedArchive);
+  };
+
+  // 2. Fetch Single Game by Direct Chess.com URL or ID
+  const handleLoadByUrl = async (e) => {
+    e?.preventDefault();
+    if (!gameUrlInput.trim()) {
+      setFetchError('Please paste a Chess.com game URL or ID.');
+      return;
+    }
+
+    setIsFetchingGames(true);
+    setFetchError('');
+    try {
+      const gameData = await getChessComGameById(gameUrlInput.trim());
+      if (gameData?.pgn) {
+        startAnalysis(gameData.pgn);
+      } else {
+        setFetchError('Could not retrieve PGN for this game URL.');
+      }
+    } catch (err) {
+      setFetchError(err.message || 'Could not load game from Chess.com.');
+    } finally {
+      setIsFetchingGames(false);
+    }
+  };
+
+  // 3. Start Stockfish Analysis
+  const startAnalysis = useCallback(async (pgnText, forHistoryId = null) => {
     if (!pgnText || !pgnText.trim()) return;
     const cleanPgn = pgnText.trim();
-    setActiveHistoryId(isTemporary ? null : forHistoryId || null);
     setPgnInput(cleanPgn);
+
     analysisAbortRef.current?.abort();
     const controller = new AbortController();
     analysisAbortRef.current = controller;
     const runId = ++analysisRunRef.current;
+
     setIsAnalyzing(true);
     setAnalysisProgress(0);
     setCurrentPly(0);
     setInitialVariation(null);
     setCommentary([]);
+    setLoadError('');
 
     try {
       const preview = createAnalysisPreview(cleanPgn);
@@ -137,16 +230,14 @@ export default function GameAnalysisView({
         setAnalysisResult(result);
         setIsAnalyzing(false);
         setCurrentPly(0);
-        const candidates = selectCommentaryCandidates(result);
 
-        // Pre-generate engine fallback commentary so commentary is immediately visible
+        const candidates = selectCommentaryCandidates(result);
         const fallbackCommentary = candidates.flatMap((candidate) => {
           const text = createCommentaryFallback(candidate);
           return text ? [{ id: candidate.id, ply: candidate.ply, text, source: 'verified-engine' }] : [];
         });
         setCommentary(fallbackCommentary);
 
-        // Compute White and Black accuracy scores
         const whiteAcc = typeof result.accuracy?.white === 'number'
           ? result.accuracy.white
           : (typeof result.whiteAccuracy === 'number' ? result.whiteAccuracy : 0);
@@ -154,48 +245,20 @@ export default function GameAnalysisView({
           ? result.accuracy.black
           : (typeof result.blackAccuracy === 'number' ? result.blackAccuracy : 0);
 
-        const accuracyData = {
-          white: Math.round(whiteAcc * 10) / 10,
-          black: Math.round(blackAcc * 10) / 10
-        };
-
-        const targetHistId = isTemporary ? null : forHistoryId || activeHistoryId;
-        if (targetHistId) {
-          // Persist only White and Black accuracy to the game history record
-          try {
-            await updateGameAccuracy(targetHistId, accuracyData);
-          } catch {
-            // Non-blocking
-          }
-        } else if (!analysisId && !isTemporary) {
-          // New game analyzed directly: save lightweight history record
-          try {
-            const importRes = await importPgnGames(cleanPgn, 'paste');
-            const imported = importRes?.games?.[0];
-            if (imported?.id) {
-              setActiveHistoryId(imported.id);
-              await updateGameAccuracy(imported.id, accuracyData);
-            }
-          } catch {
-            // Non-blocking
-          }
+        const targetId = forHistoryId || activeHistoryId;
+        if (targetId) {
+          updateGameAccuracy(targetId, {
+            white: Math.round(whiteAcc * 10) / 10,
+            black: Math.round(blackAcc * 10) / 10
+          }).catch(() => {});
         }
 
-        if (!analysisId) {
-          try {
-            const headers = result.headers || {};
-            const title = `${headers.white || 'White'} vs ${headers.black || 'Black'}${headers.date ? ` · ${headers.date}` : ''}`;
-            const { analysis, persistenceMessage: message } = await createAnalysis({
-              title,
-              pgn: cleanPgn,
-              report: result,
-              selectedPly: 0
-            });
-            setPersistenceMessage(message);
-            onAnalysisCreated?.(analysis.id);
-          } catch (error) {
-            setPersistenceMessage(error.message || 'Unable to save this analysis.');
-          }
+        if (analysisId) {
+          const headers = result.headers || {};
+          const title = `${headers.white || 'White'} vs ${headers.black || 'Black'}${headers.date ? ` · ${headers.date}` : ''}`;
+          createAnalysis({ title, pgn: cleanPgn, report: result, selectedPly: 0 })
+            .then(({ analysis }) => onAnalysisCreated?.(analysis.id))
+            .catch(() => {});
         }
 
         if (candidates.length) {
@@ -213,100 +276,53 @@ export default function GameAnalysisView({
     } catch (err) {
       if (err?.name !== 'AbortError' && analysisRunRef.current === runId) {
         setIsAnalyzing(false);
-        setPersistenceMessage(err.message || 'Analysis failed.');
+        setLoadError(err.message || 'Analysis failed.');
       }
     }
   }, [activeHistoryId, analysisId, onAnalysisCreated]);
 
-  // Load game from history if historyId in URL/props (runs fresh Stockfish analysis from scratch)
+  // Load game from history if historyId in URL
   useEffect(() => {
     setActiveHistoryId(historyId || null);
     if (!historyId) return;
 
     let active = true;
-    setIsLoadingSaved(true);
-    setSavedLoadError('');
-
     getGameById(historyId)
       .then((game) => {
         if (!active) return;
-        setIsLoadingSaved(false);
         if (game?.pgn) {
-          startAnalysis(game.pgn, historyId, game.temporary);
+          startAnalysis(game.pgn, historyId);
         } else {
-          setSavedLoadError('No PGN moves found for this game history entry.');
+          setLoadError('No PGN moves found for this game.');
         }
       })
       .catch((err) => {
         if (!active) return;
-        setIsLoadingSaved(false);
-        setSavedLoadError(err.message || 'Unable to load game from history.');
+        setLoadError(err.message || 'Unable to load game from history.');
       });
 
     return () => { active = false; };
   }, [historyId, startAnalysis]);
 
-  // Load initial PGN or sample game on mount if empty
+  // Load legacy analysis if analysisId in URL
   useEffect(() => {
-    if (initialPgn && initialPgn !== lastInitialPgnRef.current && !historyId) {
-      lastInitialPgnRef.current = initialPgn;
-      startAnalysis(initialPgn);
-    }
-  }, [initialPgn, historyId, startAnalysis]);
-
-  // Load legacy saved analysis if analysisId in URL
-  useEffect(() => {
-    if (!analysisId) {
-      if (!historyId) setIsLoadingSaved(false);
-      return undefined;
-    }
+    if (!analysisId) return;
     let active = true;
-    setIsLoadingSaved(true);
-    setSavedLoadError('');
-
     loadAnalysis(analysisId)
       .then((record) => {
         if (!active) return;
         setPgnInput(record.sourcePgn);
         setAnalysisResult(record.report);
-        setCurrentPly(Math.max(0, Math.min(record.selectedPly || 0, (record.report?.positions?.length || 1) - 1)));
+        setCurrentPly(record.selectedPly || 0);
         setCommentary(record.commentary || []);
         setInitialVariation(record.variation || null);
-        setIsLoadingSaved(false);
       })
-      .catch((error) => {
+      .catch((err) => {
         if (!active) return;
-        setIsLoadingSaved(false);
-        setSavedLoadError(error.message || 'Unable to load saved analysis.');
+        setLoadError(err.message || 'Unable to load saved analysis.');
       });
-
     return () => { active = false; };
-  }, [analysisId, historyId]);
-
-  // API Health & recent games check
-  useEffect(() => {
-    let active = true;
-    getApiHealth()
-      .then((health) => { if (active) setApiHealth(health); })
-      .catch((error) => { if (active) setApiHealth({ api: { available: false }, error: error.message }); });
-
-    listAnalyses()
-      .then((list) => { if (active) setSavedAnalyses(list); })
-      .catch(() => {});
-
-    Promise.all([listGameHistory({ limit: 5 }), listTemporaryGames()])
-      .then(([historyData, temporaryGames]) => {
-        if (active) {
-          setRecentHistoryGames([
-            ...temporaryGames.map((game) => ({ ...game, temporary: true })),
-            ...(historyData.games || [])
-          ].slice(0, 10));
-        }
-      })
-      .catch(() => {});
-
-    return () => { active = false; };
-  }, [analysisId, historyId]);
+  }, [analysisId]);
 
   // Debounced resume saving (legacy only)
   const handleResumeChange = useCallback(({ selectedPly, currentFen, variation }) => {
@@ -316,36 +332,46 @@ export default function GameAnalysisView({
     clearTimeout(resumeSaveTimerRef.current);
     resumeSaveTimerRef.current = setTimeout(() => {
       lastSavedResumeKeyRef.current = key;
-      saveAnalysisResume(analysisId, { selectedPly, currentFen, variation })
-        .catch(() => {});
+      saveAnalysisResume(analysisId, { selectedPly, currentFen, variation }).catch(() => {});
     }, 1500);
   }, [analysisId]);
 
-  const handleDeleteAnalysis = async (id) => {
-    try {
-      await deleteAnalysis(id);
-      setSavedAnalyses((current) => current.filter((analysis) => analysis.id !== id));
-      if (id === analysisId) onNewAnalysis?.();
-    } catch {
-      // Ignored
-    }
+  // Upload handler
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError('');
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result;
+      if (typeof content === 'string' && content.trim()) {
+        startAnalysis(content);
+      } else {
+        setUploadError('The selected file is empty.');
+      }
+    };
+    reader.onerror = () => setUploadError('Failed to read file.');
+    reader.readAsText(file);
   };
 
-  if (showGameHistory) {
-    return (
-      <GameHistoryView
-        savedChessComUsername={savedChessComUsername}
-        onAnalyzeGame={onAnalyzeGame}
-        onNavigateAnalysis={onNavigateAnalysis}
-        onNavigateHome={() => onNewAnalysis?.()}
-      />
-    );
-  }
+  // Filtered games
+  const filteredGames = useMemo(() => {
+    return games.filter((g) => {
+      if (filterFormat !== 'all' && g.timeClass !== filterFormat) return false;
+      if (opponentSearch.trim()) {
+        const query = opponentSearch.trim().toLowerCase();
+        const oppName = (g.opponent?.username || '').toLowerCase();
+        if (!oppName.includes(query)) return false;
+      }
+      return true;
+    });
+  }, [games, filterFormat, opponentSearch]);
 
   return (
     <div className="w-full h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden flex flex-col justify-center">
       
-      {/* 1. Main View: Unified Single-Screen Analysis (matches screenshots) */}
+      {/* 1. Main View: Interactive Analysis Board */}
       {analysisResult ? (
         <InteractiveAnalysisBoard
           analysisResult={analysisResult}
@@ -365,196 +391,413 @@ export default function GameAnalysisView({
           engineEnabled={!isAnalyzing}
         />
       ) : (
-        /* 2. PGN Ingestion Modal / Card (when no game is loaded) */
+        /* 2. Minimalist Single-Screen Game Selection */
         <div className="max-w-3xl w-full mx-auto px-4 py-6 overflow-y-auto max-h-full">
-          <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 lg:p-8 space-y-6 shadow-2xl animate-fade-in">
+          <div className="bg-[#101524] border border-slate-800 rounded-3xl p-5 sm:p-7 space-y-4 shadow-2xl animate-fade-in">
             
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="p-1 rounded bg-blue-500/20 text-blue-400">
-                    <Activity size={18} />
-                  </span>
-                  <span className="text-xs font-mono uppercase tracking-widest text-blue-400 font-bold">
-                    Game Analysis & AI Coach
-                  </span>
-                </div>
-                <h1 className="text-2xl font-black text-white tracking-tight">
-                  Analyze Chess Game
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <Activity size={20} />
+              </div>
+              <div>
+                <h1 className="text-xl font-black text-white tracking-tight">
+                  Game Analysis
                 </h1>
                 <p className="text-xs text-slate-400">
-                  Paste any PGN or pick a game from your Game History for instant move classification, evaluation graph, accuracy scores, and AI Coach commentary.
+                  Select any game from Chess.com or paste PGN for instant Stockfish evaluation & move review.
                 </p>
               </div>
-
-              {onNavigateHistory && (
-                <button
-                  type="button"
-                  onClick={onNavigateHistory}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-amber-300 font-bold text-xs transition-colors shrink-0 shadow cursor-pointer"
-                >
-                  <History size={16} className="text-amber-400" />
-                  <span>Game History</span>
-                </button>
-              )}
             </div>
 
-            {savedLoadError && (
-              <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">
-                {savedLoadError}
-              </p>
+            {/* Error alerts */}
+            {(loadError || fetchError || uploadError) && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0" />
+                <span>{loadError || fetchError || uploadError}</span>
+              </div>
             )}
 
-            <div className="space-y-2">
-              <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">
-                Game PGN
-              </label>
-              <textarea
-                rows={5}
-                placeholder="1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6..."
-                value={pgnInput}
-                onChange={(e) => setPgnInput(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700/80 text-slate-200 rounded-2xl p-4 text-xs font-mono focus:outline-none focus:border-blue-500/60 leading-relaxed"
-              />
-            </div>
-
-            {/* Quick Master Sample Games & Action Button */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-mono text-slate-500">Quick Samples:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPgnInput(SAMPLE_GAMES.kasparov.pgn);
-                    startAnalysis(SAMPLE_GAMES.kasparov.pgn);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-amber-300 hover:border-amber-400/50 text-xs font-semibold transition-all cursor-pointer"
-                >
-                  Kasparov's Immortal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPgnInput(SAMPLE_GAMES.opera.pgn);
-                    startAnalysis(SAMPLE_GAMES.opera.pgn);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-sky-300 hover:border-sky-400/50 text-xs font-semibold transition-all cursor-pointer"
-                >
-                  Morphy Opera Game
-                </button>
-              </div>
+            {/* Main Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 rounded-2xl border border-slate-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setActiveTab('chesscom')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                  activeTab === 'chesscom'
+                    ? 'bg-blue-600 text-white shadow-md font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Globe size={14} />
+                <span>Chess.com Games</span>
+              </button>
 
               <button
                 type="button"
-                onClick={() => startAnalysis(pgnInput)}
-                disabled={!pgnInput.trim()}
-                className="flex items-center justify-center gap-2 px-8 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-lg shadow-blue-600/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 transition-all cursor-pointer"
+                onClick={() => setActiveTab('paste')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                  activeTab === 'paste'
+                    ? 'bg-blue-600 text-white shadow-md font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
               >
-                <Sparkles size={16} />
-                <span>Analyze Game</span>
+                <ClipboardPaste size={14} />
+                <span>Paste PGN</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('upload')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                  activeTab === 'upload'
+                    ? 'bg-blue-600 text-white shadow-md font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Upload size={14} />
+                <span>Upload .pgn</span>
               </button>
             </div>
 
-            {/* Recent Games from History */}
-            {recentHistoryGames.length > 0 && (
-              <div className="border-t border-slate-800 pt-4 space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  <span className="flex items-center gap-1.5">
-                    <History size={14} className="text-amber-400" />
-                    <span>Recent Games</span>
-                  </span>
-                  {onNavigateHistory && (
+            {/* TAB 1: CHESS.COM GAMES SELECTOR */}
+            {activeTab === 'chesscom' && (
+              <div className="space-y-3.5">
+                
+                {/* Sub-modes: By Username VS Direct URL/ID */}
+                <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-800/80">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={onNavigateHistory}
-                      className="text-amber-400 hover:text-amber-300 font-semibold normal-case text-xs"
+                      onClick={() => setChessComSubMode('user')}
+                      className={`px-3 py-1 rounded-lg text-xs transition-colors ${
+                        chessComSubMode === 'user'
+                          ? 'bg-slate-800 text-blue-400 font-bold border border-blue-500/30'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
                     >
-                      View all ({recentHistoryGames.length}+) →
+                      Browse by Username
                     </button>
-                  )}
-                </div>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {recentHistoryGames.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors"
+                    <button
+                      type="button"
+                      onClick={() => setChessComSubMode('url')}
+                      className={`px-3 py-1 rounded-lg text-xs transition-colors ${
+                        chessComSubMode === 'url'
+                          ? 'bg-slate-800 text-blue-400 font-bold border border-blue-500/30'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveHistoryId(item.temporary ? null : item.id);
-                          if (item.pgn) {
-                            startAnalysis(item.pgn, item.temporary ? null : item.id, item.temporary);
-                          }
-                        }}
-                        className="text-left flex-1 min-w-0 cursor-pointer"
-                      >
-                        <span className="text-xs font-bold text-slate-200 block truncate">
-                          {item.game?.white || 'White'} vs {item.game?.black || 'Black'}
-                        </span>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
-                          <span>{item.game?.result || '*'}</span>
-                          {item.game?.date && <span>• {item.game.date}</span>}
-                          {item.game?.opening && <span className="truncate">• {item.game.opening}</span>}
-                          {item.temporary && <span className="text-amber-400">• session only</span>}
+                      Paste Game Link / ID
+                    </button>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-500 hidden sm:inline">
+                    No database pollution
+                  </span>
+                </div>
+
+                {/* Sub-mode A: Search Username with Archive Selector */}
+                {chessComSubMode === 'user' && (
+                  <>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleFetchGames(usernameInput, 20, selectedArchive);
+                      }}
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
+                    >
+                      {/* Username input */}
+                      <div className="relative flex-1">
+                        <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                          type="text"
+                          placeholder="Chess.com username (e.g. supreme_assassin)..."
+                          value={usernameInput}
+                          onChange={(e) => setUsernameInput(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-white text-xs font-sans placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Month / Archive dropdown */}
+                      {archives.length > 0 && (
+                        <div className="sm:w-44">
+                          <select
+                            value={selectedArchive}
+                            onChange={(e) => handleArchiveChange(e.target.value)}
+                            className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-white text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+                          >
+                            <option value="">All Recent Games</option>
+                            {archives.slice(0, 12).map((a) => (
+                              <option key={a.url} value={a.url}>
+                                {a.label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                      </button>
+                      )}
 
                       <button
-                        type="button"
-                        onClick={() => {
-                          setActiveHistoryId(item.temporary ? null : item.id);
-                          if (item.pgn) {
-                            startAnalysis(item.pgn, item.temporary ? null : item.id, item.temporary);
-                          }
-                        }}
-                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white font-bold text-xs shrink-0 cursor-pointer"
+                        type="submit"
+                        disabled={isFetchingGames || !usernameInput.trim()}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md disabled:opacity-40 transition-colors shrink-0 cursor-pointer"
                       >
-                        <Play size={10} className="fill-current" />
-                        <span>Analyze</span>
+                        {isFetchingGames ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+                        <span>{isFetchingGames ? 'Fetching...' : 'Fetch Games'}</span>
                       </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    </form>
 
-            {/* Saved Analyses List (Legacy) */}
-            {savedAnalyses.length > 0 && (
-              <div className="border-t border-slate-800 pt-4 space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  <span>Saved Analyses (Legacy)</span>
-                  <span>{savedAnalyses.length}</span>
-                </div>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {savedAnalyses.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
-                      <button
-                        type="button"
-                        onClick={() => onSelectAnalysis?.(item.id)}
-                        className="text-left flex-1 min-w-0"
-                      >
-                        <span className="text-xs font-bold text-slate-200 block truncate">{item.title || 'Game Analysis'}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {item.headers?.white || 'White'} vs {item.headers?.black || 'Black'}
+                    {/* Filter & Opponent Search Bar */}
+                    {games.length > 0 && (
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+                        <div className="flex items-center gap-1 overflow-x-auto text-[11px]">
+                          {['all', 'blitz', 'rapid', 'bullet', 'daily'].map((fmt) => (
+                            <button
+                              key={fmt}
+                              type="button"
+                              onClick={() => setFilterFormat(fmt)}
+                              className={`px-2.5 py-1 rounded-lg capitalize transition-colors font-medium ${
+                                filterFormat === fmt
+                                  ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50 font-bold'
+                                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                              }`}
+                            >
+                              {fmt === 'all' ? 'All' : fmt}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="relative sm:w-48">
+                          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                          <input
+                            type="text"
+                            placeholder="Filter opponent..."
+                            value={opponentSearch}
+                            onChange={(e) => setOpponentSearch(e.target.value)}
+                            className="w-full pl-7 pr-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-white text-[11px] focus:outline-none focus:border-blue-500 placeholder-slate-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Games List */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold px-1">
+                        <span>
+                          {games.length > 0
+                            ? `Showing ${filteredGames.length} of ${games.length} games for ${usernameInput}`
+                            : `Games for ${usernameInput}`}
                         </span>
-                      </button>
+                      </div>
+
+                      {isFetchingGames ? (
+                        <div className="py-12 flex flex-col items-center justify-center space-y-2 text-slate-400 bg-slate-900/40 rounded-2xl border border-slate-800/80">
+                          <Loader2 size={22} className="animate-spin text-blue-500" />
+                          <p className="text-xs font-mono">Fetching games from Chess.com archives...</p>
+                        </div>
+                      ) : filteredGames.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800/80">
+                          {games.length === 0
+                            ? 'Enter a Chess.com username and click "Fetch Games" to select any game.'
+                            : 'No games match your opponent / format filter.'}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1 scrollbar-thin">
+                          {filteredGames.map((game, idx) => {
+                            const isWin = game.userResult === 'win';
+                            const isLoss = game.userResult === 'loss';
+
+                            return (
+                              <div
+                                key={game.id || idx}
+                                onClick={() => startAnalysis(game.pgn)}
+                                className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/90 hover:border-blue-500/60 hover:bg-slate-800/60 cursor-pointer transition-all group shadow-sm"
+                                title="Click to analyze this game"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  {/* Color & Result Badge */}
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span
+                                      className={`w-3 h-3 rounded-full border ${
+                                        game.userColor === 'white'
+                                          ? 'bg-white border-slate-300'
+                                          : 'bg-slate-950 border-slate-700'
+                                      }`}
+                                      title={`Played as ${game.userColor}`}
+                                    />
+                                    <span
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                        isWin
+                                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                          : isLoss
+                                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                          : 'bg-slate-700 text-slate-300'
+                                      }`}
+                                    >
+                                      {isWin ? 'WIN' : isLoss ? 'LOSS' : 'DRAW'}
+                                    </span>
+                                  </div>
+
+                                  {/* Opponent & Meta */}
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-bold text-white truncate group-hover:text-blue-300 transition-colors">
+                                      vs {game.opponent?.username || 'Opponent'}
+                                      {game.opponent?.rating && (
+                                        <span className="text-[10px] font-mono text-slate-500 ml-1 font-normal">
+                                          ({game.opponent.rating})
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
+                                      <span className="capitalize">{game.timeClass || game.timeControl}</span>
+                                      {game.date && <span>• {game.date}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Analyze Action */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startAnalysis(game.pgn);
+                                  }}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white font-bold text-[11px] shrink-0 shadow transition-all group-hover:scale-105"
+                                >
+                                  <Play size={10} className="fill-current" />
+                                  <span>Analyze</span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Load More Button */}
+                      {!selectedArchive && games.length >= 20 && !isFetchingGames && (
+                        <div className="pt-2 text-center">
+                          <button
+                            type="button"
+                            onClick={handleLoadMore}
+                            className="px-4 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-blue-400 hover:text-blue-300 text-xs font-semibold transition-colors"
+                          >
+                            Load More Games (+20)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Sub-mode B: Direct Chess.com Game Link / ID Input */}
+                {chessComSubMode === 'url' && (
+                  <form onSubmit={handleLoadByUrl} className="space-y-3 pt-2">
+                    <div className="relative">
+                      <LinkIcon size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder="Paste Chess.com game link or ID (e.g. chess.com/game/live/185961891956)..."
+                        value={gameUrlInput}
+                        onChange={(e) => setGameUrlInput(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700/80 text-white text-xs font-sans placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-500">
+                        Works with any public live chess game link
+                      </span>
+
                       <button
-                        type="button"
-                        onClick={() => handleDeleteAnalysis(item.id)}
-                        className="text-slate-500 hover:text-rose-400 text-xs p-1"
-                        title="Delete"
+                        type="submit"
+                        disabled={isFetchingGames || !gameUrlInput.trim()}
+                        className="flex items-center gap-1.5 px-6 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md disabled:opacity-40 transition-colors cursor-pointer"
                       >
-                        ✕
+                        {isFetchingGames ? <Loader2 size={14} className="animate-spin" /> : <Play size={12} className="fill-current" />}
+                        <span>Load & Analyze Game</span>
                       </button>
                     </div>
-                  ))}
+                  </form>
+                )}
+
+              </div>
+            )}
+
+            {/* TAB 2: PASTE PGN */}
+            {activeTab === 'paste' && (
+              <div className="space-y-3">
+                <textarea
+                  rows={6}
+                  placeholder="Paste game PGN here (e.g. 1. e4 e5 2. Nf3 Nc6...)"
+                  value={pgnInput}
+                  onChange={(e) => setPgnInput(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700/80 text-slate-200 rounded-2xl p-3.5 text-xs font-mono focus:outline-none focus:border-blue-500 leading-relaxed"
+                />
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-mono text-slate-500">Samples:</span>
+                    <button
+                      type="button"
+                      onClick={() => startAnalysis(SAMPLE_GAMES.kasparov.pgn)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 hover:border-amber-400 text-xs font-medium transition-all"
+                    >
+                      Kasparov's Immortal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startAnalysis(SAMPLE_GAMES.opera.pgn)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-sky-300 hover:border-sky-400 text-xs font-medium transition-all"
+                    >
+                      Morphy Opera
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => startAnalysis(pgnInput)}
+                    disabled={!pgnInput.trim()}
+                    className="flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 disabled:opacity-40 transition-all cursor-pointer"
+                  >
+                    <Sparkles size={14} />
+                    <span>Analyze PGN</span>
+                  </button>
                 </div>
               </div>
             )}
+
+            {/* TAB 3: UPLOAD .PGN FILE */}
+            {activeTab === 'upload' && (
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept=".pgn,.txt"
+                  className="hidden"
+                />
+
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-700 hover:border-blue-500/70 bg-slate-900/50 hover:bg-slate-900/80 rounded-2xl p-8 text-center cursor-pointer transition-all space-y-2 group"
+                >
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                    <Upload size={22} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">
+                      Click to choose or drag a .pgn file here
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Supports standard .pgn and .txt files
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
+
     </div>
   );
 }

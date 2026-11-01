@@ -3,7 +3,6 @@ import {
   Sparkles,
   Zap,
   Activity,
-  BarChart3,
   ShieldCheck,
   Cpu,
   RotateCw,
@@ -14,7 +13,7 @@ import {
   BookOpen
 } from 'lucide-react';
 
-export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis, onNavigateAnalytics }) {
+export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis }) {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-10 animate-fadeIn">
       
@@ -56,7 +55,7 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis,
       </div>
 
       {/* Core Feature Pillars */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Pillar 1: Woodpecker Method */}
         <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4 flex flex-col justify-between hover:border-slate-700 transition-all">
@@ -86,7 +85,7 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis,
             </div>
             <h3 className="text-lg font-bold text-white tracking-tight">Grandmaster Game Analysis</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Upload or paste a PGN for move-by-move analysis with the bundled local Stockfish engine. Review evaluation, principal variations, centipawn loss, and tactical classifications. Optional Lichess Cloud results are separate and never replace local review scores.
+              Upload or paste a PGN for move-by-move analysis with the bundled local Stockfish engine. Review evaluation, principal variations, centipawn loss, and tactical classifications directly in your browser.
             </p>
           </div>
           <button
@@ -94,26 +93,6 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis,
             className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 pt-2"
           >
             <span>Review a Game</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        {/* Pillar 3: Analytics & Heatmap */}
-        <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4 flex flex-col justify-between hover:border-slate-700 transition-all">
-          <div className="space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <BarChart3 size={24} />
-            </div>
-            <h3 className="text-lg font-bold text-white tracking-tight">Analytics & Heatmap</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Stay disciplined with a GitHub-style activity contribution calendar, consecutive training day streaks, solving accuracy trends, and cycle-over-cycle speed progression statistics.
-            </p>
-          </div>
-          <button
-            onClick={onNavigateAnalytics}
-            className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 pt-2"
-          >
-            <span>View Progress</span>
             <ArrowRight size={14} />
           </button>
         </div>

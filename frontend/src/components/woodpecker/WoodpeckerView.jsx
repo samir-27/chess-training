@@ -22,7 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { storage } from '../../services/storageService.js';
-import { compareWoodpeckerCycles } from '../../services/analyticsService.js';
+import { compareWoodpeckerCycles } from '../../services/trainingStatsService.js';
 
 export default function WoodpeckerView({ onStartTraining }) {
   const [cycles, setCycles] = useState(() => storage.getAllCycles());

@@ -3,7 +3,7 @@
  */
 
 import { storage } from './storageService.js';
-import { getOverallStats } from './analyticsService.js';
+import { getOverallStats } from './trainingStatsService.js';
 
 export const ACHIEVEMENTS = [
   {

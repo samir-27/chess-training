@@ -12,6 +12,7 @@ import coachRoutes from './routes/coachRoutes.js';
 import sessionRoutes from './routes/sessionRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import gameHistoryRoutes from './routes/gameHistoryRoutes.js';
+import { fetchChessComRecentGames, fetchChessComGameById } from './services/gameHistoryService.js';
 import { findAnonymousSession } from './services/sessionToken.js';
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -117,6 +118,30 @@ export function createApp() {
   app.use('/api/analyses', requireDatabase, requireSession, analysisWriteLimiter, analysisRoutes);
   app.use('/api/history', requireDatabase, requireSession, analysisWriteLimiter, gameHistoryRoutes);
   app.use('/api/coach', coachRoutes);
+
+  // Public unauthenticated Chess.com endpoints (for instant game selection)
+  app.get('/api/chesscom/user/:username/games', async (req, res, next) => {
+    try {
+      const { username } = req.params;
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+      const archive = typeof req.query.archive === 'string' && req.query.archive ? req.query.archive : null;
+      const data = await fetchChessComRecentGames(username, limit, archive);
+      res.json(data);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/chesscom/game', async (req, res, next) => {
+    try {
+      const idOrUrl = req.query.url || req.query.id;
+      if (!idOrUrl) return res.status(400).json({ error: 'Game URL or ID is required.' });
+      const data = await fetchChessComGameById(String(idOrUrl));
+      res.json(data);
+    } catch (err) {
+      next(err);
+    }
+  });
 
   const distDirectory = fs.existsSync(path.join(projectDirectory, 'frontend', 'dist'))
     ? path.join(projectDirectory, 'frontend', 'dist')

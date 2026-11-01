@@ -60,36 +60,195 @@ async function request(path, options = {}) {
 }
 
 /**
- * Fetch paginated game history with search, filters, and sort options
+ * Helper to format raw Chess.com game into our standard display object
  */
-export async function listGameHistory({
-  page = 1,
-  limit = 20,
-  search = '',
-  result = 'all',
-  dateFrom = '',
-  dateTo = '',
-  sort = 'newest',
-  source = 'all'
-} = {}) {
-  const params = new URLSearchParams();
-  params.set('page', String(page));
-  params.set('limit', String(limit));
-  if (search) params.set('search', search);
-  if (result && result !== 'all') params.set('result', result);
-  if (dateFrom) params.set('dateFrom', dateFrom);
-  if (dateTo) params.set('dateTo', dateTo);
-  if (sort) params.set('sort', sort);
-  if (source && source !== 'all') params.set('source', source);
+function formatChessComGame(g, cleanUser, index) {
+  const isWhite = g.white?.username?.toLowerCase() === cleanUser;
+  const opponent = isWhite ? g.black : g.white;
+  const userSide = isWhite ? g.white : g.black;
 
-  return request(`/history?${params.toString()}`);
+  let userResult = 'draw';
+  if (userSide?.result === 'win') {
+    userResult = 'win';
+  } else if (opponent?.result === 'win' || ['checkmated', 'resigned', 'timeout', 'abandoned'].includes(userSide?.result)) {
+    userResult = 'loss';
+  }
+
+  const dateStr = g.end_time
+    ? new Date(g.end_time * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    : (g.pgn ? (g.pgn.match(/\[Date "([^"]+)"\]/)?.[1] || '') : '');
+
+  return {
+    id: g.url ? g.url.split('/').pop() : `chesscom-${index}-${g.end_time || Date.now()}`,
+    url: g.url || '',
+    white: { username: g.white?.username || 'White', rating: g.white?.rating || null },
+    black: { username: g.black?.username || 'Black', rating: g.black?.rating || null },
+    userColor: isWhite ? 'white' : 'black',
+    opponent: { username: opponent?.username || 'Opponent', rating: opponent?.rating || null },
+    userRating: userSide?.rating || null,
+    userResult,
+    timeClass: g.time_class || 'blitz',
+    timeControl: g.time_control || '',
+    date: dateStr,
+    pgn: g.pgn || ''
+  };
 }
 
 /**
- * Fetch summary statistics for the user's game history
+ * Fetch games for any Chess.com username (supports limit, archive selection, and robust multi-archive scanning)
  */
-export async function getGameHistoryStats() {
-  return request('/history/stats');
+export async function getChessComRecentGames(username, { limit = 20, archive = null } = {}) {
+  if (!username || typeof username !== 'string' || !username.trim()) {
+    throw new GameHistoryApiError('Chess.com username is required.');
+  }
+
+  const cleanUser = username.trim().toLowerCase();
+
+  // Try public backend API endpoint first
+  try {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    if (archive) params.set('archive', String(archive));
+    const res = await fetch(`${API_BASE}/chesscom/user/${encodeURIComponent(cleanUser)}/games?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        username: data.username || cleanUser,
+        games: data.games || [],
+        archives: data.archives || []
+      };
+    }
+  } catch {
+    // Fall back to direct browser fetch
+  }
+
+  // Direct client-side browser fetch fallback
+  try {
+    const archivesRes = await fetch(`https://api.chess.com/pub/player/${encodeURIComponent(cleanUser)}/games/archives`);
+    if (archivesRes.status === 404) {
+      throw new GameHistoryApiError(`Chess.com player "${username}" was not found.`, 404);
+    }
+    if (!archivesRes.ok) {
+      throw new GameHistoryApiError(`Chess.com API error (${archivesRes.status}).`);
+    }
+
+    const archivesData = await archivesRes.json();
+    const archives = Array.isArray(archivesData.archives) ? archivesData.archives : [];
+    if (archives.length === 0) {
+      return { username: cleanUser, games: [], archives: [] };
+    }
+
+    const archiveList = archives.map((url) => {
+      const parts = url.split('/');
+      const year = parts[parts.length - 2];
+      const month = parts[parts.length - 1];
+      const dateObj = new Date(Date.UTC(parseInt(year, 10), parseInt(month, 10) - 1, 1));
+      const label = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      return { url, year, month, label };
+    }).reverse();
+
+    const targetArchives = archive
+      ? [archive]
+      : archiveList.map((a) => a.url);
+
+    const rawGames = [];
+
+    for (const archiveUrl of targetArchives) {
+      try {
+        const monthRes = await fetch(archiveUrl);
+        if (monthRes.ok) {
+          const monthData = await monthRes.json();
+          if (Array.isArray(monthData.games)) {
+            // Newest games in the month first
+            rawGames.push(...[...monthData.games].reverse());
+          }
+        }
+      } catch {
+        // Continue
+      }
+      if (!archive && rawGames.length >= limit) break;
+    }
+
+    const selected = archive ? rawGames : rawGames.slice(0, limit);
+    const games = selected.map((g, idx) => formatChessComGame(g, cleanUser, idx));
+
+    return {
+      username: cleanUser,
+      games,
+      archives: archiveList
+    };
+  } catch (err) {
+    if (err instanceof GameHistoryApiError) throw err;
+    throw new GameHistoryApiError(`Could not fetch games from Chess.com: ${err.message}`);
+  }
+}
+
+/**
+ * Fetch an exact Chess.com game by its live game URL or numeric ID
+ */
+export async function getChessComGameById(idOrUrl) {
+  if (!idOrUrl || typeof idOrUrl !== 'string' || !idOrUrl.trim()) {
+    throw new GameHistoryApiError('Game URL or ID is required.');
+  }
+
+  // Try backend proxy first
+  try {
+    const params = new URLSearchParams({ url: idOrUrl.trim() });
+    const res = await fetch(`${API_BASE}/chesscom/game?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.pgn) return data;
+    }
+  } catch {
+    // Fall back to direct fetch
+  }
+
+  // Client-side direct resolution
+  const match = idOrUrl.match(/(\d{6,20})/);
+  if (!match) {
+    throw new GameHistoryApiError('Please enter a valid Chess.com game URL or numeric ID.');
+  }
+  const gameId = match[1];
+
+  const cbRes = await fetch(`https://www.chess.com/callback/live/game/${gameId}`).catch((err) => {
+    throw new GameHistoryApiError(`Failed to reach Chess.com: ${err.message}`);
+  });
+
+  if (!cbRes.ok) {
+    throw new GameHistoryApiError(`Game ${gameId} not found on Chess.com (${cbRes.status}).`);
+  }
+
+  const cbData = await cbRes.json();
+  const d = new Date(cbData.game.endTime * 1000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const user = cbData.game.pgnHeaders?.White || cbData.players?.white?.username;
+
+  if (!user) {
+    throw new GameHistoryApiError(`Could not determine player username for game ${gameId}.`);
+  }
+
+  const monthRes = await fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user)}/games/${y}/${m}`);
+  if (!monthRes.ok) {
+    throw new GameHistoryApiError(`Could not fetch monthly archive for player ${user}.`);
+  }
+
+  const monthData = await monthRes.json();
+  const found = (monthData.games || []).find((g) => g.url?.includes(gameId));
+
+  if (!found?.pgn) {
+    throw new GameHistoryApiError(`Could not retrieve PGN for game ${gameId}.`);
+  }
+
+  return {
+    id: gameId,
+    url: found.url || `https://www.chess.com/game/live/${gameId}`,
+    pgn: found.pgn,
+    white: found.white,
+    black: found.black,
+    timeClass: found.time_class,
+    timeControl: found.time_control
+  };
 }
 
 /**
@@ -97,11 +256,6 @@ export async function getGameHistoryStats() {
  */
 export async function getGameById(id) {
   if (!id) throw new GameHistoryApiError('Game ID is required.');
-  if (!/^[a-f\d]{24}$/i.test(id)) {
-    const temporaryGame = (await listTemporaryGames()).find((game) => game.id === id);
-    if (temporaryGame) return temporaryGame;
-    throw new GameHistoryApiError('Temporary game is not available in this session.', 404, 'game_not_found');
-  }
   const data = await request(`/history/${id}`);
   return data.game;
 }
@@ -121,56 +275,7 @@ export async function importPgnGames(pgnText, source = 'paste') {
 }
 
 /**
- * Discover monthly archives for a Chess.com player
- */
-export async function getChessComArchives(username) {
-  if (!username || typeof username !== 'string' || !username.trim()) {
-    throw new GameHistoryApiError('Username is required.');
-  }
-
-  const params = new URLSearchParams({ username: username.trim() });
-  return request(`/history/chesscom/archives?${params.toString()}`);
-}
-
-/**
- * Import games from a single Chess.com monthly archive URL
- */
-export async function importChessComArchive(archiveUrl) {
-  if (!archiveUrl) throw new GameHistoryApiError('Archive URL is required.');
-  return request('/history/chesscom/archive', {
-    method: 'POST',
-    body: JSON.stringify({ archiveUrl })
-  });
-}
-
-/**
- * Batch import all/recent archives for a Chess.com player
- */
-export async function importChessComBatch(username, limitMonths = 12) {
-  if (!username) throw new GameHistoryApiError('Username is required.');
-  return request('/history/import/chesscom', {
-    method: 'POST',
-    body: JSON.stringify({ username: username.trim(), limitMonths })
-  });
-}
-
-export async function importRecentChessComGames(username) {
-  if (!username || typeof username !== 'string' || !username.trim()) {
-    throw new GameHistoryApiError('Username is required.');
-  }
-  return request('/history/import/chesscom', {
-    method: 'POST',
-    body: JSON.stringify({ username: username.trim() })
-  });
-}
-
-export async function listTemporaryGames() {
-  const data = await request('/history/temporary');
-  return data.games || [];
-}
-
-/**
- * Update analysis accuracy on a game record (only saves White & Black accuracy numbers)
+ * Update analysis accuracy on a game record
  */
 export async function updateGameAccuracy(gameId, accuracy) {
   if (!gameId) throw new GameHistoryApiError('Game ID is required.');
@@ -187,19 +292,5 @@ export async function deleteGame(gameId) {
   if (!gameId) throw new GameHistoryApiError('Game ID is required.');
   return request(`/history/${gameId}`, {
     method: 'DELETE'
-  });
-}
-
-/**
- * Bulk delete multiple games from history
- */
-export async function bulkDeleteGames(gameIds) {
-  if (!Array.isArray(gameIds) || gameIds.length === 0) {
-    throw new GameHistoryApiError('Array of game IDs is required.');
-  }
-
-  return request('/history/bulk-delete', {
-    method: 'POST',
-    body: JSON.stringify({ ids: gameIds })
   });
 }

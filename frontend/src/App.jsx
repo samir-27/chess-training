@@ -3,7 +3,6 @@ import AppShell from './components/layout/AppShell.jsx';
 import DashboardView from './components/dashboard/DashboardView.jsx';
 import TrainingWorkspace from './components/training/TrainingWorkspace.jsx';
 import WoodpeckerView from './components/woodpecker/WoodpeckerView.jsx';
-import AnalyticsView from './components/analytics/AnalyticsView.jsx';
 import AboutAppView from './components/about/AboutAppView.jsx';
 import SettingsView from './components/settings/SettingsView.jsx';
 import GameAnalysisView from './components/analysis/GameAnalysisView.jsx';
@@ -31,21 +30,19 @@ function getRoute(urlOrPath) {
   const searchParams = new URLSearchParams(search);
   const historyId = searchParams.get('historyId') || null;
 
-  if (pathname === '/') return { tab: 'dashboard', analysisId: null, historyId: null, showGameHistory: false, notFound: false };
-  if (pathname === '/history') return { tab: 'analysis', analysisId: null, historyId: null, showGameHistory: true, notFound: false };
-  if (pathname === '/analysis') return { tab: 'analysis', analysisId: null, historyId, showGameHistory: false, notFound: false };
+  if (pathname === '/') return { tab: 'dashboard', analysisId: null, historyId: null, notFound: false };
+  if (pathname === '/analysis' || pathname === '/history') return { tab: 'analysis', analysisId: null, historyId, notFound: false };
   const analysisMatch = pathname.match(/^\/analysis\/([a-z\d_-]{1,80})$/i);
-  if (analysisMatch) return { tab: 'analysis', analysisId: analysisMatch[1], historyId, showGameHistory: false, notFound: false };
+  if (analysisMatch) return { tab: 'analysis', analysisId: analysisMatch[1], historyId, notFound: false };
 
   const routes = {
     '/woodpecker': 'woodpecker',
-    '/analytics': 'analytics',
     '/about': 'about_app',
     '/settings': 'settings',
     '/training': 'training'
   };
   return routes[pathname]
-    ? { tab: routes[pathname], analysisId: null, historyId: null, showGameHistory: false, notFound: false }
+    ? { tab: routes[pathname], analysisId: null, historyId: null, notFound: false }
     : { tab: 'not_found', analysisId: null, historyId: null, notFound: true };
 }
 
@@ -53,8 +50,6 @@ const TAB_PATHS = {
   dashboard: '/',
   woodpecker: '/woodpecker',
   analysis: '/analysis',
-  history: '/history',
-  analytics: '/analytics',
   about_app: '/about',
   settings: '/settings',
   training: '/training'
@@ -248,7 +243,6 @@ export default function App() {
           onStartTraining={handleStartTraining}
           onNavigateWoodpecker={() => navigateToTab('woodpecker')}
           onNavigateAnalysis={() => navigateToTab('analysis')}
-          onNavigateAnalytics={() => navigateToTab('analytics')}
         />
       )}
 
@@ -276,7 +270,6 @@ export default function App() {
         <GameAnalysisView
           analysisId={route.analysisId}
           historyId={route.historyId}
-          showGameHistory={route.showGameHistory}
           savedChessComUsername={user?.chessComUsername || ''}
           onAnalysisCreated={(analysisId) => {
             setLastAnalysisId(analysisId);
@@ -284,21 +277,13 @@ export default function App() {
           }}
           onNewAnalysis={() => navigateToPath('/analysis')}
           onSelectAnalysis={(analysisId) => navigateToPath(`/analysis/${analysisId}`)}
-          onNavigateHistory={() => navigateToPath('/history')}
-          onAnalyzeGame={(gameId) => navigateToPath(`/analysis?historyId=${encodeURIComponent(gameId)}`)}
-          onNavigateAnalysis={() => navigateToPath('/analysis')}
         />
-      )}
-
-      {activeTab === 'analytics' && (
-        <AnalyticsView />
       )}
 
       {activeTab === 'about_app' && (
         <AboutAppView
           onNavigateWoodpecker={() => navigateToTab('woodpecker')}
           onNavigateAnalysis={() => navigateToTab('analysis')}
-          onNavigateAnalytics={() => navigateToTab('analytics')}
         />
       )}
 

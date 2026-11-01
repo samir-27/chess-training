@@ -8,7 +8,6 @@
 import { Chess } from 'chess.js';
 import { StockfishEngine, StockfishPool, STOCKFISH_SEARCH } from './stockfishEngine.js';
 import { isOpeningBookMove } from './openingBookService.js';
-import { evaluatePositionOnline } from './lichessAnalysisApi.js';
 
 // Move Classification Types
 export const Classification = {
@@ -969,44 +968,19 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
         const whiteCp = position.isCheckmate() ? (position.turn() === 'w' ? -10000 : 10000) : 0;
         result = { source: engine ? 'stockfish-local' : 'local-minimax', whiteCp, mate: position.isCheckmate() ? 0 : null, depth: 0, nodes: 0, bestMoveUci: null, lines: [] };
       } else {
-        // Try Lichess Cloud Evaluation first if available (depth >= 16, multiPv >= 2) matching WintrChess evaluate.ts
-        let cloudResult = null;
-        try {
-          const isWhiteTurn = position.turn() === 'w';
-          cloudResult = await evaluatePositionOnline(fen, isWhiteTurn, 16, { multiPv: 2, signal });
-        } catch {}
-
-        if (cloudResult && cloudResult.lines && cloudResult.lines.length >= 1 && (cloudResult.depth || 0) >= 16) {
-          const bestMoveUci = cloudResult.bestMoveUci;
-          const bestMove = bestMoveUci ? position.moves({ verbose: true }).find((m) =>
-            m.from === bestMoveUci.slice(0, 2) &&
-            m.to === bestMoveUci.slice(2, 4) &&
-            (m.promotion || '') === (bestMoveUci[4] || '')
+        if (engine) {
+          const uciResult = await engine.analyze(fen, signal);
+          const bestMoveUci = uciResult.bestMoveUci;
+          const bestMove = bestMoveUci ? position.moves({ verbose: true }).find((move) =>
+            move.from === bestMoveUci.slice(0, 2) &&
+            move.to === bestMoveUci.slice(2, 4) &&
+            (move.promotion || '') === (bestMoveUci[4] || '')
           ) : null;
-          if (bestMove) {
-            result = {
-              ...cloudResult,
-              bestMove,
-              whiteCp: cloudResult.whiteCp,
-              mate: cloudResult.mate
-            };
+          if (bestMoveUci && !bestMove) {
+            throw new Error(`Stockfish returned illegal move ${bestMoveUci} for FEN ${fen}.`);
           }
-        }
-
-        if (!result) {
-          if (engine) {
-            const uciResult = await engine.analyze(fen, signal);
-            const bestMoveUci = uciResult.bestMoveUci;
-            const bestMove = bestMoveUci ? position.moves({ verbose: true }).find((move) =>
-              move.from === bestMoveUci.slice(0, 2) &&
-              move.to === bestMoveUci.slice(2, 4) &&
-              (move.promotion || '') === (bestMoveUci[4] || '')
-            ) : null;
-            if (bestMoveUci && !bestMove) {
-              throw new Error(`Stockfish returned illegal move ${bestMoveUci} for FEN ${fen}.`);
-            }
-            const seenLines = new Set();
-            const lines = (uciResult.lines || []).flatMap((line, index) => {
+          const seenLines = new Set();
+          const lines = (uciResult.lines || []).flatMap((line, index) => {
               const continuationBoard = new Chess(fen);
               const continuationSan = [];
               const continuationUci = [];
@@ -1069,7 +1043,6 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
             };
           }
         }
-      }
       return result;
     })();
 
