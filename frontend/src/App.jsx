@@ -9,13 +9,33 @@ import SettingsView from './components/settings/SettingsView.jsx';
 import GameAnalysisView from './components/analysis/GameAnalysisView.jsx';
 import { storage } from './services/storageService.js';
 import { getLastAnalysisId } from './services/analysisRepository.js';
+import { getCurrentUser, logoutAccount } from './services/authService.js';
 import './App.css';
 
-function getRoute(pathname) {
-  if (pathname === '/') return { tab: 'dashboard', analysisId: null, notFound: false };
-  if (pathname === '/analysis') return { tab: 'analysis', analysisId: null, notFound: false };
+function getRoute(urlOrPath) {
+  let pathname = '/';
+  let search = '';
+  if (typeof urlOrPath === 'string') {
+    const qIdx = urlOrPath.indexOf('?');
+    if (qIdx >= 0) {
+      pathname = urlOrPath.slice(0, qIdx);
+      search = urlOrPath.slice(qIdx);
+    } else {
+      pathname = urlOrPath;
+    }
+  } else if (urlOrPath && typeof urlOrPath === 'object') {
+    pathname = urlOrPath.pathname || '/';
+    search = urlOrPath.search || '';
+  }
+
+  const searchParams = new URLSearchParams(search);
+  const historyId = searchParams.get('historyId') || null;
+
+  if (pathname === '/') return { tab: 'dashboard', analysisId: null, historyId: null, showGameHistory: false, notFound: false };
+  if (pathname === '/history') return { tab: 'analysis', analysisId: null, historyId: null, showGameHistory: true, notFound: false };
+  if (pathname === '/analysis') return { tab: 'analysis', analysisId: null, historyId, showGameHistory: false, notFound: false };
   const analysisMatch = pathname.match(/^\/analysis\/([a-z\d_-]{1,80})$/i);
-  if (analysisMatch) return { tab: 'analysis', analysisId: analysisMatch[1], notFound: false };
+  if (analysisMatch) return { tab: 'analysis', analysisId: analysisMatch[1], historyId, showGameHistory: false, notFound: false };
 
   const routes = {
     '/woodpecker': 'woodpecker',
@@ -25,14 +45,15 @@ function getRoute(pathname) {
     '/training': 'training'
   };
   return routes[pathname]
-    ? { tab: routes[pathname], analysisId: null, notFound: false }
-    : { tab: 'not_found', analysisId: null, notFound: true };
+    ? { tab: routes[pathname], analysisId: null, historyId: null, showGameHistory: false, notFound: false }
+    : { tab: 'not_found', analysisId: null, historyId: null, notFound: true };
 }
 
 const TAB_PATHS = {
   dashboard: '/',
   woodpecker: '/woodpecker',
   analysis: '/analysis',
+  history: '/history',
   analytics: '/analytics',
   about_app: '/about',
   settings: '/settings',
@@ -40,7 +61,7 @@ const TAB_PATHS = {
 };
 
 export default function App() {
-  const [route, setRoute] = useState(() => getRoute(window.location.pathname));
+  const [route, setRoute] = useState(() => getRoute(window.location.pathname + window.location.search));
   const [trainingContext, setTrainingContext] = useState(() => {
     const course = storage.getCourseById('course-woodpecker-method');
     return course && course.chapters[0]?.lessons[0]
@@ -53,11 +74,28 @@ export default function App() {
       : null;
   });
   const [lastAnalysisId, setLastAnalysisId] = useState(() => getLastAnalysisId());
+  const [user, setUser] = useState(null);
+  const [authError, setAuthError] = useState('');
   const activeTab = route.tab;
 
   useEffect(() => {
+    let active = true;
+    getCurrentUser()
+      .then((currentUser) => {
+        if (active) {
+          setUser(currentUser);
+          if (!currentUser) setLastAnalysisId(getLastAnalysisId());
+        }
+      })
+      .catch((error) => {
+        if (active) setAuthError(error.message || 'Unable to verify your account.');
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     const handlePopState = () => {
-      setRoute(getRoute(window.location.pathname));
+      setRoute(getRoute(window.location.pathname + window.location.search));
       setLastAnalysisId(getLastAnalysisId());
     };
     window.addEventListener('popstate', handlePopState);
@@ -65,7 +103,8 @@ export default function App() {
   }, []);
 
   const navigateToPath = (path, { replace = false } = {}) => {
-    if (window.location.pathname !== path) {
+    const currentFull = window.location.pathname + window.location.search;
+    if (currentFull !== path) {
       if (replace) window.history.replaceState({}, '', path);
       else window.history.pushState({}, '', path);
     }
@@ -176,8 +215,34 @@ export default function App() {
   const hasNext = Boolean(trainingContext);
   const hasPrev = Boolean(trainingContext);
 
+  const handleLogout = async () => {
+    try {
+      await logoutAccount();
+      setUser(null);
+      setAuthError('');
+      setLastAnalysisId(getLastAnalysisId());
+      navigateToPath('/');
+    } catch (error) {
+      setAuthError(error.message || 'Unable to log out.');
+    }
+  };
+
+  const handleAuthenticated = (authenticatedUser) => {
+    setUser(authenticatedUser);
+    setAuthError('');
+    setLastAnalysisId(getLastAnalysisId());
+  };
+
   return (
-    <AppShell activeTab={activeTab} onTabChange={navigateToTab}>
+    <AppShell
+      key={user?.id || 'guest'}
+      activeTab={activeTab}
+      onTabChange={navigateToTab}
+      user={user}
+      onAuthenticated={handleAuthenticated}
+      onLogout={handleLogout}
+      authError={authError}
+    >
       {activeTab === 'dashboard' && (
         <DashboardView
           onStartTraining={handleStartTraining}
@@ -210,12 +275,18 @@ export default function App() {
       {activeTab === 'analysis' && (
         <GameAnalysisView
           analysisId={route.analysisId}
+          historyId={route.historyId}
+          showGameHistory={route.showGameHistory}
+          savedChessComUsername={user?.chessComUsername || ''}
           onAnalysisCreated={(analysisId) => {
             setLastAnalysisId(analysisId);
             navigateToPath(`/analysis/${analysisId}`);
           }}
           onNewAnalysis={() => navigateToPath('/analysis')}
           onSelectAnalysis={(analysisId) => navigateToPath(`/analysis/${analysisId}`)}
+          onNavigateHistory={() => navigateToPath('/history')}
+          onAnalyzeGame={(gameId) => navigateToPath(`/analysis?historyId=${encodeURIComponent(gameId)}`)}
+          onNavigateAnalysis={() => navigateToPath('/analysis')}
         />
       )}
 

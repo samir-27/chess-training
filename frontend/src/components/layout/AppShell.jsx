@@ -10,10 +10,13 @@ import {
   Flame,
   Activity,
   Menu,
-  X
+  X,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { storage } from '../../services/storageService.js';
 import { getOverallStats } from '../../services/analyticsService.js';
+import AccountModal from './AccountModal.jsx';
 
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -27,10 +30,52 @@ export const NAV_ITEMS = [
 export default function AppShell({
   activeTab,
   onTabChange,
+  user,
+  onAuthenticated,
+  onLogout,
+  authError = '',
   children
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [stats, setStats] = useState(() => getOverallStats());
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await onLogout?.();
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const accountControls = (
+    <div className="mt-4 border-t border-slate-800 pt-3">
+      {user ? (
+        <>
+          <div className="mb-2 truncate text-[11px] text-slate-400" title={user.email}>{user.email}</div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-60"
+          >
+            <LogOut size={14} /> {isLoggingOut ? 'Signing out...' : 'Log out'}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAccountModalOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400"
+        >
+          <LogIn size={14} /> Sign in / Register
+        </button>
+      )}
+      {authError && <p role="alert" className="mt-2 text-[10px] text-rose-300">{authError}</p>}
+    </div>
+  );
 
   useEffect(() => {
     return storage.subscribe(() => setStats(getOverallStats()));
@@ -99,6 +144,7 @@ export default function AppShell({
               style={{ width: `${stats.today.percent}%` }}
             />
           </div>
+          {accountControls}
         </div>
       </aside>
 
@@ -151,6 +197,7 @@ export default function AppShell({
             <div className="p-4 bg-slate-900 rounded-xl border border-slate-800 text-xs font-mono">
               <div className="text-amber-400 font-bold">Streak: {stats.streaks.currentStreak} Days</div>
               <div className="text-slate-500 text-[10px] mt-0.5">{stats.overall.totalSolved} total solved</div>
+              {accountControls}
             </div>
           </div>
         </div>
@@ -186,6 +233,11 @@ export default function AppShell({
 
       </div>
 
+      <AccountModal
+        isOpen={accountModalOpen}
+        onClose={() => setAccountModalOpen(false)}
+        onAuthenticated={onAuthenticated}
+      />
     </div>
   );
 }

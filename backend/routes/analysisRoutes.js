@@ -35,7 +35,7 @@ router.post('/', asyncRoute(async (req, res) => {
   const initialFen = headers.SetUp === '1' && headers.FEN ? headers.FEN : undefined;
   const safeReport = validateReport(report, moves, initialFen);
   const analysis = await Analysis.create({
-    sessionId: req.anonymousSession._id,
+    sessionId: req.ownerId,
     title: typeof title === 'string' && title.trim() ? title.trim().slice(0, 160) : 'Untitled analysis',
     sourcePgn: pgn,
     headers,
@@ -46,7 +46,7 @@ router.post('/', asyncRoute(async (req, res) => {
 }));
 
 router.get('/', asyncRoute(async (req, res) => {
-  const analyses = await Analysis.find({ sessionId: req.anonymousSession._id })
+  const analyses = await Analysis.find({ sessionId: req.ownerId })
     .sort({ updatedAt: -1 })
     .limit(100)
     .select('title headers selectedPly schemaVersion createdAt updatedAt');
@@ -66,12 +66,12 @@ router.get('/', asyncRoute(async (req, res) => {
 router.get('/:analysisId', asyncRoute(async (req, res) => {
   const analysis = await Analysis.findOne({
     _id: req.params.analysisId,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   });
   if (!analysis) return res.status(404).json({ error: 'Analysis not found.' });
   const variations = await Variation.find({
     analysisId: analysis._id,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   }).sort({ updatedAt: -1 }).limit(MAX_VARIATIONS);
   res.json({
     analysis: serializeAnalysis(analysis),
@@ -89,7 +89,7 @@ router.get('/:analysisId', asyncRoute(async (req, res) => {
 router.post('/:analysisId/commentary', asyncRoute(async (req, res) => {
   const analysis = await Analysis.findOne({
     _id: req.params.analysisId,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   });
   if (!analysis) return res.status(404).json({ error: 'Analysis not found.' });
   if (!analysis.report) return res.status(409).json({ error: 'The analysis report is not available for commentary.' });
@@ -109,7 +109,7 @@ router.patch('/:analysisId', asyncRoute(async (req, res) => {
   const { selectedPly, currentFen } = req.body || {};
   validateResumeState({ selectedPly, currentFen });
   const analysis = await Analysis.findOneAndUpdate(
-    { _id: req.params.analysisId, sessionId: req.anonymousSession._id },
+    { _id: req.params.analysisId, sessionId: req.ownerId },
     { $set: { selectedPly } },
     { new: true, runValidators: true }
   );
@@ -120,22 +120,22 @@ router.patch('/:analysisId', asyncRoute(async (req, res) => {
 router.delete('/:analysisId', asyncRoute(async (req, res) => {
   const analysis = await Analysis.findOneAndDelete({
     _id: req.params.analysisId,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   });
   if (!analysis) return res.status(404).json({ error: 'Analysis not found.' });
-  await Variation.deleteMany({ analysisId: analysis._id, sessionId: req.anonymousSession._id });
+  await Variation.deleteMany({ analysisId: analysis._id, sessionId: req.ownerId });
   res.status(204).end();
 }));
 
 router.get('/:analysisId/variations', asyncRoute(async (req, res) => {
   const analysisExists = await Analysis.exists({
     _id: req.params.analysisId,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   });
   if (!analysisExists) return res.status(404).json({ error: 'Analysis not found.' });
   const variations = await Variation.find({
     analysisId: req.params.analysisId,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   }).sort({ updatedAt: -1 }).limit(MAX_VARIATIONS);
   res.json({
     variations: variations.map((variation) => ({
@@ -156,7 +156,7 @@ router.post('/:analysisId/variations', asyncRoute(async (req, res) => {
   validateVariation({ rootFen, originalPly, moves, cursor });
   const analysis = await Analysis.findOne({
     _id: req.params.analysisId,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   });
   if (!analysis) return res.status(404).json({ error: 'Analysis not found.' });
   if (analysis.report?.positions) {
@@ -172,18 +172,18 @@ router.post('/:analysisId/variations', asyncRoute(async (req, res) => {
   }
   const existingCount = await Variation.countDocuments({
     analysisId: analysis._id,
-    sessionId: req.anonymousSession._id
+    sessionId: req.ownerId
   });
   const existing = await Variation.findOne({
     analysisId: analysis._id,
-    sessionId: req.anonymousSession._id,
+    sessionId: req.ownerId,
     branchId
   });
   if (!existing && existingCount >= MAX_VARIATIONS) {
     return res.status(409).json({ error: 'This analysis already has the maximum number of saved variations.' });
   }
   const variation = await Variation.findOneAndUpdate(
-    { analysisId: analysis._id, sessionId: req.anonymousSession._id, branchId },
+    { analysisId: analysis._id, sessionId: req.ownerId, branchId },
     { $set: { rootFen, originalPly, moves, cursor } },
     { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
   );

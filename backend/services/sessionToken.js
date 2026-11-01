@@ -7,10 +7,11 @@ export function hashSessionToken(token) {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export async function createAnonymousSession() {
+export async function createAnonymousSession(userId = null) {
   const token = randomBytes(32).toString('base64url');
   const session = await AnonymousSession.create({
     tokenHash: hashSessionToken(token),
+    userId,
     expiresAt: new Date(Date.now() + SESSION_TTL_MS)
   });
   return { token, session };
@@ -22,4 +23,8 @@ export async function findAnonymousSession(token) {
     tokenHash: hashSessionToken(token),
     expiresAt: { $gt: new Date() }
   });
+}
+
+export async function deleteSession(sessionId) {
+  return AnonymousSession.deleteOne({ _id: sessionId });
 }

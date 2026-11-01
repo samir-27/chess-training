@@ -20,7 +20,8 @@
     "test:frontend": "node --test frontend/src/tests/*.test.js",
     "test:backend": "node --test backend/tests/*.test.js",
     "import:pgn": "node scripts/import-pgn.js",
-    "migrate:woodpecker": "node scripts/migrate-woodpecker.js"
+    "migrate:woodpecker": "node scripts/migrate-woodpecker.js",
+    "migrate:history": "node backend/scripts/migrateAnalysesToHistory.js"
   },
   "dependencies": {
     "@mliebelt/pgn-parser": "^1.4.19",

@@ -2,7 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Activity,
   Plus,
-  Sparkles
+  Sparkles,
+  History,
+  RotateCcw,
+  Play
 } from 'lucide-react';
 import {
   analyzePgnGame,
@@ -20,7 +23,15 @@ import {
   saveLocalCommentary,
   saveAnalysisResume
 } from '../../services/analysisRepository.js';
+import {
+  getGameById,
+  updateGameAccuracy,
+  importPgnGames,
+  listGameHistory,
+  listTemporaryGames
+} from '../../services/gameHistoryRepository.js';
 import InteractiveAnalysisBoard from './InteractiveAnalysisBoard.jsx';
+import GameHistoryView from '../history/GameHistoryView.jsx';
 
 // Sample master games for immediate 1-click testing
 const SAMPLE_GAMES = {
@@ -56,9 +67,15 @@ const SAMPLE_GAMES = {
 export default function GameAnalysisView({
   initialPgn = '',
   analysisId = null,
+  historyId = null,
+  showGameHistory = false,
+  savedChessComUsername = '',
   onAnalysisCreated,
   onNewAnalysis,
-  onSelectAnalysis
+  onSelectAnalysis,
+  onNavigateHistory,
+  onAnalyzeGame,
+  onNavigateAnalysis
 }) {
   const [pgnInput, setPgnInput] = useState(initialPgn || '');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -67,11 +84,13 @@ export default function GameAnalysisView({
   const [currentPly, setCurrentPly] = useState(0);
   const [initialVariation, setInitialVariation] = useState(null);
   const [savedAnalyses, setSavedAnalyses] = useState([]);
+  const [recentHistoryGames, setRecentHistoryGames] = useState([]);
   const [savedLoadError, setSavedLoadError] = useState('');
   const [persistenceMessage, setPersistenceMessage] = useState('');
   const [commentary, setCommentary] = useState([]);
   const [apiHealth, setApiHealth] = useState(null);
-  const [isLoadingSaved, setIsLoadingSaved] = useState(() => Boolean(analysisId));
+  const [isLoadingSaved, setIsLoadingSaved] = useState(() => Boolean(analysisId || historyId));
+  const [activeHistoryId, setActiveHistoryId] = useState(historyId || null);
 
   const analysisAbortRef = useRef(null);
   const analysisRunRef = useRef(0);
@@ -80,9 +99,11 @@ export default function GameAnalysisView({
   const resumeSaveRunRef = useRef(0);
   const lastSavedResumeKeyRef = useRef(null);
 
-  const startAnalysis = useCallback(async (pgnText) => {
-    if (!pgnText.trim()) return;
-    setPgnInput(pgnText);
+  const startAnalysis = useCallback(async (pgnText, forHistoryId = null, isTemporary = false) => {
+    if (!pgnText || !pgnText.trim()) return;
+    const cleanPgn = pgnText.trim();
+    setActiveHistoryId(isTemporary ? null : forHistoryId || null);
+    setPgnInput(cleanPgn);
     analysisAbortRef.current?.abort();
     const controller = new AbortController();
     analysisAbortRef.current = controller;
@@ -94,10 +115,10 @@ export default function GameAnalysisView({
     setCommentary([]);
 
     try {
-      const preview = createAnalysisPreview(pgnText);
+      const preview = createAnalysisPreview(cleanPgn);
       setAnalysisResult(preview);
 
-      const result = await analyzePgnGame(pgnText, (progress) => {
+      const result = await analyzePgnGame(cleanPgn, (progress) => {
         if (analysisRunRef.current !== runId) return;
         const pct = typeof progress === 'number' ? progress : progress?.percentage ?? 0;
         setAnalysisProgress(pct);
@@ -125,32 +146,68 @@ export default function GameAnalysisView({
         });
         setCommentary(fallbackCommentary);
 
-        const headers = result.headers || {};
-        const title = `${headers.white || 'White'} vs ${headers.black || 'Black'}${headers.date ? ` · ${headers.date}` : ''}`;
-        
-        try {
-          const { analysis, persistenceMessage: message } = await createAnalysis({
-            title,
-            pgn: pgnText,
-            report: result,
-            selectedPly: 0
-          });
-          setPersistenceMessage(message);
-          onAnalysisCreated?.(analysis.id);
+        // Compute White and Black accuracy scores
+        const whiteAcc = typeof result.accuracy?.white === 'number'
+          ? result.accuracy.white
+          : (typeof result.whiteAccuracy === 'number' ? result.whiteAccuracy : 0);
+        const blackAcc = typeof result.accuracy?.black === 'number'
+          ? result.accuracy.black
+          : (typeof result.blackAccuracy === 'number' ? result.blackAccuracy : 0);
 
-          if (candidates.length) {
-            generateAnalysisCommentary(analysis.id, pgnText, result)
-              .then((entries) => {
-                if (analysisRunRef.current !== runId) return;
-                if (entries?.length) {
-                  setCommentary(entries);
-                  saveLocalCommentary(analysis.id, entries);
-                }
-              })
-              .catch(() => {});
+        const accuracyData = {
+          white: Math.round(whiteAcc * 10) / 10,
+          black: Math.round(blackAcc * 10) / 10
+        };
+
+        const targetHistId = isTemporary ? null : forHistoryId || activeHistoryId;
+        if (targetHistId) {
+          // Persist only White and Black accuracy to the game history record
+          try {
+            await updateGameAccuracy(targetHistId, accuracyData);
+          } catch {
+            // Non-blocking
           }
-        } catch {
-          // Local analysis persistence fallback handled cleanly
+        } else if (!analysisId && !isTemporary) {
+          // New game analyzed directly: save lightweight history record
+          try {
+            const importRes = await importPgnGames(cleanPgn, 'paste');
+            const imported = importRes?.games?.[0];
+            if (imported?.id) {
+              setActiveHistoryId(imported.id);
+              await updateGameAccuracy(imported.id, accuracyData);
+            }
+          } catch {
+            // Non-blocking
+          }
+        }
+
+        if (!analysisId) {
+          try {
+            const headers = result.headers || {};
+            const title = `${headers.white || 'White'} vs ${headers.black || 'Black'}${headers.date ? ` · ${headers.date}` : ''}`;
+            const { analysis, persistenceMessage: message } = await createAnalysis({
+              title,
+              pgn: cleanPgn,
+              report: result,
+              selectedPly: 0
+            });
+            setPersistenceMessage(message);
+            onAnalysisCreated?.(analysis.id);
+          } catch (error) {
+            setPersistenceMessage(error.message || 'Unable to save this analysis.');
+          }
+        }
+
+        if (candidates.length) {
+          generateAnalysisCommentary(analysisId, cleanPgn, result)
+            .then((entries) => {
+              if (analysisRunRef.current !== runId) return;
+              if (entries?.length) {
+                setCommentary(entries);
+                if (analysisId) saveLocalCommentary(analysisId, entries);
+              }
+            })
+            .catch(() => {});
         }
       }
     } catch (err) {
@@ -159,20 +216,48 @@ export default function GameAnalysisView({
         setPersistenceMessage(err.message || 'Analysis failed.');
       }
     }
-  }, [onAnalysisCreated]);
+  }, [activeHistoryId, analysisId, onAnalysisCreated]);
+
+  // Load game from history if historyId in URL/props (runs fresh Stockfish analysis from scratch)
+  useEffect(() => {
+    setActiveHistoryId(historyId || null);
+    if (!historyId) return;
+
+    let active = true;
+    setIsLoadingSaved(true);
+    setSavedLoadError('');
+
+    getGameById(historyId)
+      .then((game) => {
+        if (!active) return;
+        setIsLoadingSaved(false);
+        if (game?.pgn) {
+          startAnalysis(game.pgn, historyId, game.temporary);
+        } else {
+          setSavedLoadError('No PGN moves found for this game history entry.');
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        setIsLoadingSaved(false);
+        setSavedLoadError(err.message || 'Unable to load game from history.');
+      });
+
+    return () => { active = false; };
+  }, [historyId, startAnalysis]);
 
   // Load initial PGN or sample game on mount if empty
   useEffect(() => {
-    if (initialPgn && initialPgn !== lastInitialPgnRef.current) {
+    if (initialPgn && initialPgn !== lastInitialPgnRef.current && !historyId) {
       lastInitialPgnRef.current = initialPgn;
       startAnalysis(initialPgn);
     }
-  }, [initialPgn, startAnalysis]);
+  }, [initialPgn, historyId, startAnalysis]);
 
-  // Load saved analysis if analysisId in URL
+  // Load legacy saved analysis if analysisId in URL
   useEffect(() => {
     if (!analysisId) {
-      setIsLoadingSaved(false);
+      if (!historyId) setIsLoadingSaved(false);
       return undefined;
     }
     let active = true;
@@ -196,21 +281,34 @@ export default function GameAnalysisView({
       });
 
     return () => { active = false; };
-  }, [analysisId]);
+  }, [analysisId, historyId]);
 
-  // API Health Check
+  // API Health & recent games check
   useEffect(() => {
     let active = true;
     getApiHealth()
       .then((health) => { if (active) setApiHealth(health); })
       .catch((error) => { if (active) setApiHealth({ api: { available: false }, error: error.message }); });
+
     listAnalyses()
       .then((list) => { if (active) setSavedAnalyses(list); })
       .catch(() => {});
-    return () => { active = false; };
-  }, [analysisId]);
 
-  // Debounced resume saving (avoids redundant network writes)
+    Promise.all([listGameHistory({ limit: 5 }), listTemporaryGames()])
+      .then(([historyData, temporaryGames]) => {
+        if (active) {
+          setRecentHistoryGames([
+            ...temporaryGames.map((game) => ({ ...game, temporary: true })),
+            ...(historyData.games || [])
+          ].slice(0, 10));
+        }
+      })
+      .catch(() => {});
+
+    return () => { active = false; };
+  }, [analysisId, historyId]);
+
+  // Debounced resume saving (legacy only)
   const handleResumeChange = useCallback(({ selectedPly, currentFen, variation }) => {
     if (!analysisId) return;
     const key = `${selectedPly}:${currentFen}:${variation?.cursor || 0}:${variation?.moves?.length || 0}`;
@@ -233,6 +331,17 @@ export default function GameAnalysisView({
     }
   };
 
+  if (showGameHistory) {
+    return (
+      <GameHistoryView
+        savedChessComUsername={savedChessComUsername}
+        onAnalyzeGame={onAnalyzeGame}
+        onNavigateAnalysis={onNavigateAnalysis}
+        onNavigateHome={() => onNewAnalysis?.()}
+      />
+    );
+  }
+
   return (
     <div className="w-full h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden flex flex-col justify-center">
       
@@ -250,6 +359,7 @@ export default function GameAnalysisView({
           onNewAnalysis={() => {
             setAnalysisResult(null);
             setPgnInput('');
+            setActiveHistoryId(null);
             onNewAnalysis?.();
           }}
           engineEnabled={!isAnalyzing}
@@ -259,21 +369,34 @@ export default function GameAnalysisView({
         <div className="max-w-3xl w-full mx-auto px-4 py-6 overflow-y-auto max-h-full">
           <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 lg:p-8 space-y-6 shadow-2xl animate-fade-in">
             
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded bg-blue-500/20 text-blue-400">
-                  <Activity size={18} />
-                </span>
-                <span className="text-xs font-mono uppercase tracking-widest text-blue-400 font-bold">
-                  Game Analysis & AI Coach
-                </span>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded bg-blue-500/20 text-blue-400">
+                    <Activity size={18} />
+                  </span>
+                  <span className="text-xs font-mono uppercase tracking-widest text-blue-400 font-bold">
+                    Game Analysis & AI Coach
+                  </span>
+                </div>
+                <h1 className="text-2xl font-black text-white tracking-tight">
+                  Analyze Chess Game
+                </h1>
+                <p className="text-xs text-slate-400">
+                  Paste any PGN or pick a game from your Game History for instant move classification, evaluation graph, accuracy scores, and AI Coach commentary.
+                </p>
               </div>
-              <h1 className="text-2xl font-black text-white tracking-tight">
-                Import Chess Game
-              </h1>
-              <p className="text-xs text-slate-400">
-                Paste any PGN from Chess.com, Lichess, or tournaments for instant move classification, evaluation graph, accuracy scores, and AI Coach commentary.
-              </p>
+
+              {onNavigateHistory && (
+                <button
+                  type="button"
+                  onClick={onNavigateHistory}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-amber-300 font-bold text-xs transition-colors shrink-0 shadow cursor-pointer"
+                >
+                  <History size={16} className="text-amber-400" />
+                  <span>Game History</span>
+                </button>
+              )}
             </div>
 
             {savedLoadError && (
@@ -305,7 +428,7 @@ export default function GameAnalysisView({
                     setPgnInput(SAMPLE_GAMES.kasparov.pgn);
                     startAnalysis(SAMPLE_GAMES.kasparov.pgn);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-amber-300 hover:border-amber-400/50 text-xs font-semibold transition-all"
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-amber-300 hover:border-amber-400/50 text-xs font-semibold transition-all cursor-pointer"
                 >
                   Kasparov's Immortal
                 </button>
@@ -315,7 +438,7 @@ export default function GameAnalysisView({
                     setPgnInput(SAMPLE_GAMES.opera.pgn);
                     startAnalysis(SAMPLE_GAMES.opera.pgn);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-sky-300 hover:border-sky-400/50 text-xs font-semibold transition-all"
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-sky-300 hover:border-sky-400/50 text-xs font-semibold transition-all cursor-pointer"
                 >
                   Morphy Opera Game
                 </button>
@@ -332,11 +455,75 @@ export default function GameAnalysisView({
               </button>
             </div>
 
-            {/* Saved Analyses List */}
+            {/* Recent Games from History */}
+            {recentHistoryGames.length > 0 && (
+              <div className="border-t border-slate-800 pt-4 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <History size={14} className="text-amber-400" />
+                    <span>Recent Games</span>
+                  </span>
+                  {onNavigateHistory && (
+                    <button
+                      type="button"
+                      onClick={onNavigateHistory}
+                      className="text-amber-400 hover:text-amber-300 font-semibold normal-case text-xs"
+                    >
+                      View all ({recentHistoryGames.length}+) →
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {recentHistoryGames.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveHistoryId(item.temporary ? null : item.id);
+                          if (item.pgn) {
+                            startAnalysis(item.pgn, item.temporary ? null : item.id, item.temporary);
+                          }
+                        }}
+                        className="text-left flex-1 min-w-0 cursor-pointer"
+                      >
+                        <span className="text-xs font-bold text-slate-200 block truncate">
+                          {item.game?.white || 'White'} vs {item.game?.black || 'Black'}
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
+                          <span>{item.game?.result || '*'}</span>
+                          {item.game?.date && <span>• {item.game.date}</span>}
+                          {item.game?.opening && <span className="truncate">• {item.game.opening}</span>}
+                          {item.temporary && <span className="text-amber-400">• session only</span>}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveHistoryId(item.temporary ? null : item.id);
+                          if (item.pgn) {
+                            startAnalysis(item.pgn, item.temporary ? null : item.id, item.temporary);
+                          }
+                        }}
+                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white font-bold text-xs shrink-0 cursor-pointer"
+                      >
+                        <Play size={10} className="fill-current" />
+                        <span>Analyze</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Saved Analyses List (Legacy) */}
             {savedAnalyses.length > 0 && (
               <div className="border-t border-slate-800 pt-4 space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  <span>Saved Analyses</span>
+                  <span>Saved Analyses (Legacy)</span>
                   <span>{savedAnalyses.length}</span>
                 </div>
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">

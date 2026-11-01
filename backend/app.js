@@ -10,6 +10,8 @@ import mongoose from 'mongoose';
 import analysisRoutes from './routes/analysisRoutes.js';
 import coachRoutes from './routes/coachRoutes.js';
 import sessionRoutes from './routes/sessionRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import gameHistoryRoutes from './routes/gameHistoryRoutes.js';
 import { findAnonymousSession } from './services/sessionToken.js';
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +36,7 @@ function requireSession(req, res, next) {
     const session = await findAnonymousSession(token);
     if (!session) return res.status(401).json({ error: 'Anonymous session is invalid or expired.' });
     req.anonymousSession = session;
+    req.ownerId = session.userId || session._id;
     return next();
   })(req, res, next);
 }
@@ -77,6 +80,13 @@ export function createApp() {
     legacyHeaders: false,
     message: { error: 'Anonymous session creation is rate limited.' }
   });
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many authentication attempts. Please try again later.' }
+  });
   const analysisWriteLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 1000,
@@ -103,7 +113,9 @@ export function createApp() {
     });
   });
   app.use('/api/sessions', requireDatabase, sessionLimiter, sessionRoutes);
+  app.use('/api/auth', requireDatabase, authLimiter, authRoutes);
   app.use('/api/analyses', requireDatabase, requireSession, analysisWriteLimiter, analysisRoutes);
+  app.use('/api/history', requireDatabase, requireSession, analysisWriteLimiter, gameHistoryRoutes);
   app.use('/api/coach', coachRoutes);
 
   const distDirectory = fs.existsSync(path.join(projectDirectory, 'frontend', 'dist'))
