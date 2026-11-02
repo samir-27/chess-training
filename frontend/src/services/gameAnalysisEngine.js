@@ -337,57 +337,110 @@ export function evaluateMovePlayed(chessBefore, movePlayed, depth = 2) {
 }
 
 /**
- * Converts centipawn score to Win Probability Percentage [0, 100]
- * Uses WintrChess logistic curve: 1 / (1 + exp(-0.0035 * cp))
+ * Normalizes any evaluation (centipawns or mate) to a unified White-perspective score in centipawns.
+ * White advantage is positive (+), Black advantage is negative (-).
+ * Forced mates are mapped smoothly to the range [9000, 10000] and [-10000, -9000].
+ */
+export function normalizeEvaluationToWhiteCp(evaluation) {
+  if (evaluation === null || evaluation === undefined) return 0;
+  if (typeof evaluation === 'number') return evaluation;
+
+  const isMate = evaluation.type === 'mate' || (evaluation.mate !== null && evaluation.mate !== undefined);
+  if (isMate) {
+    const rawMate = evaluation.type === 'mate' ? evaluation.value : evaluation.mate;
+    if (rawMate === 0) {
+      if (evaluation.whiteCp !== undefined && evaluation.whiteCp !== null) return evaluation.whiteCp;
+      return evaluation.turn === 'w' ? -10000 : 10000;
+    }
+    if (rawMate > 0) {
+      // White has forced mate in `rawMate` moves (shorter mate = higher score)
+      return 10000 - Math.min(Math.abs(rawMate), 100) * 10;
+    } else {
+      // Black has forced mate in |rawMate| moves (shorter mate = lower/more negative score)
+      return -10000 + Math.min(Math.abs(rawMate), 100) * 10;
+    }
+  }
+
+  const cp = evaluation.whiteCp ?? evaluation.value ?? evaluation.score ?? evaluation.cp ?? 0;
+  return Math.max(-10000, Math.min(10000, Number(cp)));
+}
+
+/**
+ * Converts centipawn score to Win Probability Percentage [0, 100] from White's perspective
+ * Uses standard logistic curve: 1 / (1 + exp(-0.0035 * cp))
  */
 export function centipawnsToWinChance(cp) {
   if (cp === null || cp === undefined) return 50;
   if (cp >= 10000) return 100;
   if (cp <= -10000) return 0;
-  const clampedCp = Math.max(-2000, Math.min(2000, cp));
+  const clampedCp = Math.max(-2000, Math.min(2000, Number(cp)));
   return Math.max(0, Math.min(100, 100 / (1 + Math.exp(-0.0035 * clampedCp))));
 }
 
 /**
- * Calculates Expected Points [0, 1] for an evaluation
- * Direct implementation of WintrChess expectedPoints.ts
+ * Calculates Expected Points [0, 1] for an evaluation from the specified player's perspective.
+ * When moveColour is 'w', returns White's expected points [0, 1].
+ * When moveColour is 'b', returns Black's expected points (1 - White's expected points) [0, 1].
  */
 export function getExpectedPoints(evaluation, options = {}) {
   const centipawnGradient = options.centipawnGradient || 0.0035;
   const moveColour = options.moveColour || 'w';
+  const isWhite = moveColour === 'w' || moveColour === 'white';
 
   const isMate = evaluation?.type === 'mate' || (evaluation?.mate !== null && evaluation?.mate !== undefined);
   if (isMate) {
     const mateVal = evaluation?.type === 'mate' ? evaluation.value : evaluation.mate;
     if (mateVal === 0) {
-      return (moveColour === 'w' || moveColour === 'white') ? 1 : 0;
+      // Mate on the board
+      const whiteWon = evaluation.whiteCp !== undefined ? evaluation.whiteCp > 0 : evaluation.turn === 'b';
+      return (isWhite ? whiteWon : !whiteWon) ? 1.0 : 0.0;
     }
-    return mateVal > 0 ? 1 : 0;
+    const whiteWinning = mateVal > 0;
+    return (isWhite ? whiteWinning : !whiteWinning) ? 1.0 : 0.0;
   }
 
-  const cpVal = evaluation?.type === 'centipawn' ? evaluation.value : (evaluation?.whiteCp ?? evaluation?.score ?? 0);
-  return 1 / (1 + Math.exp(-centipawnGradient * cpVal));
+  const whiteCp = normalizeEvaluationToWhiteCp(evaluation);
+  const clampedCp = Math.max(-2000, Math.min(2000, whiteCp));
+  const whiteExp = 1 / (1 + Math.exp(-centipawnGradient * clampedCp));
+
+  return isWhite ? whiteExp : (1 - whiteExp);
 }
 
 /**
- * Calculates Expected Points Loss for the moving player [0, 1]
- * Direct implementation of WintrChess expectedPoints.ts
+ * Calculates Expected Points Loss for the moving player [0, 1].
+ * Guaranteed strictly symmetrical for White and Black.
+ * If the played move maintains or improves expected points, returns 0.
  */
 export function getExpectedPointsLoss(previousEvaluation, currentEvaluation, moveColour) {
   const isWhite = moveColour === 'w' || moveColour === 'white';
-  const prevExp = getExpectedPoints(previousEvaluation, { moveColour: isWhite ? 'b' : 'w' });
-  const currExp = getExpectedPoints(currentEvaluation, { moveColour: isWhite ? 'w' : 'b' });
-  return Math.max(0, (prevExp - currExp) * (isWhite ? 1 : -1));
+  const moverCol = isWhite ? 'w' : 'b';
+
+  const prevExp = getExpectedPoints(previousEvaluation, { moveColour: moverCol });
+  const currExp = getExpectedPoints(currentEvaluation, { moveColour: moverCol });
+
+  const loss = prevExp - currExp;
+  return Math.max(0, Math.min(1, loss));
 }
 
 /**
- * Calculates Move Accuracy Score from expected points loss
- * WintrChess accuracy formula: 103.16 * exp(-4 * loss) - 3.17
+ * Calculates Move Accuracy Score from expected points loss [0, 100].
+ * Standard formula: 103.16 * exp(-4 * loss) - 3.17, clamped between 0 and 100.
  */
 export function calculateMoveAccuracy(loss = 0) {
-  const normalizedLoss = loss > 1 ? loss / 100 : Math.max(0, loss);
+  const normalizedLoss = loss > 1 ? loss / 100 : Math.max(0, Number(loss) || 0);
   const acc = 103.16 * Math.exp(-4 * normalizedLoss) - 3.17;
   return Math.max(0, Math.min(100, Math.round(acc * 10) / 10));
+}
+
+/**
+ * Calculates centipawn loss for ACPL tracking, capped at 1000 centipawns to avoid
+ * forced-mate transitions artificially blowing up the game's overall ACPL.
+ */
+export function calculateCentipawnLoss(scoreBefore, scorePlayed, isWhite, mateBefore = null, matePlayed = null) {
+  const normBefore = normalizeEvaluationToWhiteCp({ whiteCp: scoreBefore, mate: mateBefore });
+  const normPlayed = normalizeEvaluationToWhiteCp({ whiteCp: scorePlayed, mate: matePlayed });
+  const loss = (normBefore - normPlayed) * (isWhite ? 1 : -1);
+  return Math.max(0, Math.min(1000, Math.round(loss)));
 }
 
 /**
@@ -441,7 +494,7 @@ export function isPieceSafe(board, piece, playedMove = null) {
 }
 
 /**
- * Returns list of player's non-pawn pieces left unsafe / sacrificed (WintrChess pieceSafety.ts)
+ * Returns list of player's non-pawn pieces left unsafe / sacrificed
  */
 export function getUnsafePieces(board, color, playedMove = null) {
   const capturedPieceValue = playedMove?.captured ? (PIECE_VALUES[playedMove.captured] || 0) : 0;
@@ -454,7 +507,7 @@ export function getUnsafePieces(board, color, playedMove = null) {
       if (
         piece &&
         piece.color === color &&
-        piece.type !== 'p' && // Pawns are not considered piece sacrifices in WintrChess
+        piece.type !== 'p' && // Pawns are not considered piece sacrifices
         piece.type !== 'k' && // King cannot be sacrificed
         (PIECE_VALUES[piece.type] || 0) > capturedPieceValue &&
         !isPieceSafe(board, { square, type: piece.type, color }, playedMove)
@@ -490,7 +543,7 @@ export function isPieceTrapped(board, piece) {
 }
 
 /**
- * Preliminary check for Critical and Brilliant moves (WintrChess criticalMove.ts)
+ * Preliminary check for Critical and Brilliant moves
  */
 export function isMoveCriticalCandidate({
   chessBefore,
@@ -519,90 +572,153 @@ export function isMoveCriticalCandidate({
 }
 
 /**
- * Brilliant move classifier (WintrChess brilliant.ts)
+ * Brilliant move detector:
+ * Identifies genuine material sacrifices that are objectively sound.
+ * Requires:
+ * 1. Piece sacrifice (minor piece, rook, queen) left attacked / undefended.
+ * 2. Objectively sound: top engine choice or virtually zero point loss (<= 0.015).
+ * 3. Results in a winning or decisive advantage for the mover (>= +150 cp or forced mate).
+ * 4. Rejects blunders, trapped pieces, queen promotions, and escaping to safety.
  */
-export function considerBrilliantClassification({
+export function isBrilliantSacrifice({
   chessBefore,
   chessAfter,
   playedMove,
-  moverColor,
+  isWhite,
   moverScore,
   isMoverMate,
-  secondMoverScore
+  mateScore,
+  pointLoss = 0,
+  isTopChoice = false,
+  secondBestLine = null
 }) {
-  if (!isMoveCriticalCandidate({ chessBefore, moverScore, isMoverMate, secondMoverScore, playedMove })) {
-    return false;
-  }
+  // Must be top choice or virtually zero expected point loss
+  if (!isTopChoice && pointLoss > 0.015) return false;
 
-  // Promotions cannot be brilliant
+  // Must maintain a strong advantage or forced checkmate for the mover
+  if (!isMoverMate && moverScore < 150) return false;
+  if (isMoverMate && mateScore <= 0) return false;
+
+  // Promotions and King moves cannot be brilliant sacrifices
   if (playedMove.promotion) return false;
+  if (playedMove.piece === 'k') return false;
 
-  // Must maintain a solid/winning advantage
-  if (moverScore < 100 && !isMoverMate) return false;
+  // Cannot be a move played under check
+  if (chessBefore.isCheck()) return false;
 
-  const previousUnsafe = getUnsafePieces(chessBefore, moverColor);
-  const currentUnsafe = getUnsafePieces(chessAfter, moverColor, playedMove);
+  const moverColor = isWhite ? 'w' : 'b';
 
-  // Moving a piece to safety disallows brilliant
-  if (!chessAfter.isCheck() && currentUnsafe.length < previousUnsafe.length) {
+  // Compare unsafe pieces before and after
+  const unsafeBefore = getUnsafePieces(chessBefore, moverColor);
+  const unsafeAfter = getUnsafePieces(chessAfter, moverColor, playedMove);
+
+  // Must leave at least one non-pawn, non-king piece sacrificed/unsafe
+  if (unsafeAfter.length === 0) return false;
+
+  // Moving a piece to safety without check/mate is not a sacrifice
+  if (unsafeAfter.length < unsafeBefore.length && !chessAfter.isCheck()) {
     return false;
   }
 
-  // Must leave at least one non-pawn piece sacrificed/unsafe
-  if (currentUnsafe.length === 0) return false;
+  // The move must actually offer a piece into sacrifice or uncover a new sacrifice:
+  const movedPieceUnsafe = unsafeAfter.some((p) => p.square === playedMove.to);
+  const newlyUnsafePieces = unsafeAfter.filter(
+    (p) => !unsafeBefore.some((b) => b.square === p.square && b.type === p.type)
+  );
 
-  // The sacrificed piece must not have been already trapped
-  const previousTrapped = previousUnsafe.filter((p) => isPieceTrapped(chessBefore, p));
-  const movedPieceWasTrapped = previousTrapped.some((p) => p.square === playedMove.from);
-  if (movedPieceWasTrapped) return false;
+  if (!movedPieceUnsafe && newlyUnsafePieces.length === 0) {
+    return false;
+  }
+
+  // Reject if the moved piece was already trapped before the move
+  const trappedBefore = unsafeBefore.filter((p) => isPieceTrapped(chessBefore, p));
+  if (trappedBefore.some((p) => p.square === playedMove.from)) {
+    return false;
+  }
+
+  // Reject if the move captured equal or higher material without leaving another piece unsafe
+  if (playedMove.captured) {
+    const capturedVal = PIECE_VALUES[playedMove.captured] || 0;
+    const movedVal = PIECE_VALUES[playedMove.piece] || 0;
+    if (capturedVal >= movedVal) {
+      const otherUnsafe = unsafeAfter.filter((p) => p.square !== playedMove.to);
+      if (otherUnsafe.length === 0) return false;
+    }
+  }
 
   return true;
 }
 
+export const considerBrilliantClassification = isBrilliantSacrifice;
+
 /**
- * Critical (Great) move classifier (WintrChess critical.ts)
+ * Great move detector:
+ * Identifies "only moves" where all alternatives significantly drop evaluation.
+ * Uses MultiPV evaluation gaps (second move point loss >= 0.12 or centipawn gap >= 120).
+ * Filters out trivial recaptures, queen promotions, and blowouts (>= 600 cp).
  */
-export function considerCriticalClassification({
+export function isGreatMove({
   chessBefore,
   chessAfter,
   playedMove,
-  moverColor,
+  isWhite,
   moverScore,
   isMoverMate,
-  secondMoverScore,
-  secondTopMovePointLoss,
-  isTopChoice,
-  winChancePlayed,
-  plyIndex
+  mateScore,
+  isTopChoice = false,
+  secondBestLine = null,
+  plyIndex = 0
 }) {
   if (!isTopChoice) return false;
-  if (!isMoveCriticalCandidate({ chessBefore, moverScore, isMoverMate, secondMoverScore, playedMove })) {
+  if (chessAfter.isCheckmate()) return false;
+  if (playedMove.promotion === 'q') return false;
+
+  // Blowout positions are not "Great"
+  if (!isMoverMate && moverScore >= 600) return false;
+  if (isMoverMate && mateScore > 0 && mateScore <= 3) return false;
+
+  // Cannot be a capture of free, undefended material
+  if (playedMove.captured) {
+    const oppColor = isWhite ? 'b' : 'w';
+    const capturedPiece = { square: playedMove.to, type: playedMove.captured, color: oppColor };
+    const wasSafe = isPieceSafe(chessBefore, capturedPiece);
+    if (!wasSafe) return false;
+  }
+
+  // MultiPV gap verification:
+  if (secondBestLine) {
+    const sCp = secondBestLine.whiteCp ?? secondBestLine.cp ?? 0;
+    const sMate = secondBestLine.mate ?? null;
+    const moverColor = isWhite ? 'w' : 'b';
+
+    const secondPointLoss = getExpectedPointsLoss(
+      { type: isMoverMate ? 'mate' : 'centipawn', value: isMoverMate ? mateScore : moverScore },
+      { type: sMate !== null ? 'mate' : 'centipawn', value: sMate !== null ? (sMate * (isWhite ? 1 : -1)) : (isWhite ? sCp : -sCp) },
+      moverColor
+    );
+
+    const sMoverScore = sMate !== null
+      ? (sMate * (isWhite ? 1 : -1) * 10000)
+      : (isWhite ? sCp : -sCp);
+
+    const cpGap = moverScore - sMoverScore;
+
+    // Requirement: 2nd best move loses >= 0.12 expected points or >= 120 cp
+    if (secondPointLoss >= 0.12 || cpGap >= 120) {
+      return true;
+    }
     return false;
   }
 
-  // It is not critical to find moves where you already have checkmate
-  if (isMoverMate && moverScore > 0) return false;
-  if (chessAfter.isCheckmate()) return false;
-
-  // A critical move cannot be a capture of free material
-  if (playedMove.captured) {
-    const oppColor = moverColor === 'w' ? 'b' : 'w';
-    const capturedPiece = { square: playedMove.to, type: playedMove.captured, color: oppColor };
-    const capturedPieceSafety = isPieceSafe(chessBefore, capturedPiece);
-    if (!capturedPieceSafety) return false;
-  }
-
-  // If a second top line is present from the engine (WintrChess 10% point loss threshold):
-  if (secondTopMovePointLoss !== null && secondTopMovePointLoss !== undefined) {
-    return secondTopMovePointLoss >= 0.10;
-  }
-
-  // Fallback heuristic if only 1 engine line available
-  return winChancePlayed >= 52 && plyIndex > 4 && moverScore < 150 && playedMove.piece !== 'p' && playedMove.piece !== 'k';
+  // Fallback heuristic if no MultiPV available
+  return plyIndex > 6 && moverScore >= -150 && moverScore <= 200 && playedMove.piece !== 'p' && playedMove.piece !== 'k';
 }
 
+export const considerCriticalClassification = isGreatMove;
+
 /**
- * Point loss classifier using expected point losses or mate losses (WintrChess pointLoss.ts)
+ * Point loss classifier using expected point losses or mate losses.
+ * Incorporates Missed Win (MISS) when a decisive winning advantage or forced checkmate is lost.
  */
 export function pointLossClassify({
   prevCp,
@@ -613,73 +729,80 @@ export function pointLossClassify({
   playedSan,
   bestSan
 }) {
-  const prevSubjective = prevMate !== null ? prevMate * (isWhite ? 1 : -1) : prevCp * (isWhite ? 1 : -1);
-  const currSubjective = currMate !== null ? currMate * (isWhite ? 1 : -1) : currCp * (isWhite ? 1 : -1);
+  const moverSign = isWhite ? 1 : -1;
+  const prevMoverScore = prevMate !== null ? (prevMate * moverSign * 10000) : (prevCp * moverSign);
+  const currMoverScore = currMate !== null ? (currMate * moverSign * 10000) : (currCp * moverSign);
+  const prevMoverMate = prevMate !== null ? prevMate * moverSign : null;
+  const currMoverMate = currMate !== null ? currMate * moverSign : null;
 
-  // 1. Mate to mate evaluations
-  if (prevMate !== null && currMate !== null) {
-    if (prevSubjective > 0 && currSubjective < 0) {
-      return currSubjective < -3
-        ? { classification: Classification.MISTAKE, explanation: `Mistake (${playedSan}). Lost winning checkmate sequence. Best was ${bestSan}.` }
-        : { classification: Classification.BLUNDER, explanation: `Blunder (${playedSan})! Blundered into forced mate in ${Math.abs(currSubjective)}. Best was ${bestSan}.` };
+  // 1. Mover had forced mate
+  if (prevMoverMate !== null && prevMoverMate > 0) {
+    // 1A. Maintained forced mate
+    if (currMoverMate !== null && currMoverMate > 0) {
+      const mateDelay = currMoverMate - prevMoverMate;
+      if (mateDelay <= 0) {
+        return { classification: Classification.BEST, explanation: `Best move (${playedSan}). Fastest checkmate path.` };
+      } else if (mateDelay <= 2) {
+        return { classification: Classification.EXCELLENT, explanation: `Excellent move (${playedSan}). Maintains forced mate in ${currMoverMate}.` };
+      } else if (mateDelay <= 6) {
+        return { classification: Classification.GOOD, explanation: `Good move (${playedSan}). Retains checkmate sequence in ${currMoverMate}.` };
+      } else {
+        return { classification: Classification.INACCURACY, explanation: `Inaccuracy (${playedSan}). Delays checkmate to M${currMoverMate}. Best was ${bestSan}.` };
+      }
     }
 
-    const mateLoss = (currMate - prevMate) * (isWhite ? 1 : -1);
-    if (mateLoss < 0 || (mateLoss === 0 && currSubjective < 0)) {
-      return { classification: Classification.BEST, explanation: `Best move (${playedSan}). Fastest checkmate path.` };
-    } else if (mateLoss < 2) {
-      return { classification: Classification.EXCELLENT, explanation: `Excellent move (${playedSan}). Maintains forced mate.` };
-    } else if (mateLoss < 7) {
-      return { classification: Classification.GOOD, explanation: `Good move (${playedSan}). Retains checkmate pressure.` };
+    // 1B. Threw away forced mate
+    if (currMoverMate !== null && currMoverMate < 0) {
+      return { classification: Classification.BLUNDER, explanation: `Blunder (${playedSan})! Walked into checkmate in ${Math.abs(currMoverMate)}. Best was ${bestSan}.` };
+    }
+    // Resulted in centipawns: did mover miss the win?
+    if (currMoverScore < 200) {
+      return { classification: Classification.MISS, explanation: `Missed win (${playedSan}). Overlooked a direct forced checkmate sequence. Best was ${bestSan}.` };
+    } else if (currMoverScore < 600) {
+      return { classification: Classification.MISTAKE, explanation: `Mistake (${playedSan}). Let forced checkmate slip into an endgame. Best was ${bestSan}.` };
     } else {
-      return { classification: Classification.INACCURACY, explanation: `Inaccuracy (${playedSan}). Delays checkmate. Best was ${bestSan}.` };
+      return { classification: Classification.EXCELLENT, explanation: `Excellent move (${playedSan}). Retains decisive advantage (+${(currMoverScore / 100).toFixed(1)}).` };
     }
   }
 
-  // 2. Mate to centipawn evaluations (mover had forced mate, now centipawns)
-  if (prevMate !== null && prevSubjective > 0 && currMate === null) {
-    if (currSubjective >= 800) {
-      return { classification: Classification.EXCELLENT, explanation: `Excellent move (${playedSan}). Keeps decisive advantage (+${(currSubjective / 100).toFixed(1)}).` };
-    } else if (currSubjective >= 400) {
-      return { classification: Classification.GOOD, explanation: `Good move (${playedSan}). Retains winning advantage.` };
-    } else if (currSubjective >= 200) {
-      return { classification: Classification.INACCURACY, explanation: `Inaccuracy (${playedSan}). Missed direct forced checkmate. Best was ${bestSan}.` };
-    } else if (currSubjective >= 0) {
-      return { classification: Classification.MISTAKE, explanation: `Mistake (${playedSan}). Allowed opponent to escape forced mate. Best was ${bestSan}.` };
-    } else {
-      return { classification: Classification.BLUNDER, explanation: `Blunder (${playedSan})! Let a forced checkmate slip into a losing position. Best was ${bestSan}.` };
-    }
-  }
-
-  // 3. Centipawn to mate evaluations (position was centipawns, now mate)
+  // 2. Position was centipawns, now mate
   if (prevMate === null && currMate !== null) {
-    if (currSubjective > 0) {
-      return { classification: Classification.BEST, explanation: `Best move (${playedSan})! Finds forced mate in ${currSubjective}.` };
-    } else if (currSubjective >= -2) {
-      return { classification: Classification.BLUNDER, explanation: `Blunder (${playedSan})! Allows checkmate in ${Math.abs(currSubjective)}. Best was ${bestSan}.` };
-    } else if (currSubjective >= -5) {
-      return { classification: Classification.MISTAKE, explanation: `Mistake (${playedSan}). Walked into forced checkmate sequence. Best was ${bestSan}.` };
+    if (currMoverMate > 0) {
+      return { classification: Classification.BEST, explanation: `Best move (${playedSan})! Finds forced mate in ${currMoverMate}.` };
+    } else if (currMoverMate >= -2) {
+      return { classification: Classification.BLUNDER, explanation: `Blunder (${playedSan})! Allows checkmate in ${Math.abs(currMoverMate)}. Best was ${bestSan}.` };
+    } else if (currMoverMate >= -5) {
+      return { classification: Classification.BLUNDER, explanation: `Blunder (${playedSan})! Allows forced checkmate in ${Math.abs(currMoverMate)}. Best was ${bestSan}.` };
     } else {
-      return { classification: Classification.INACCURACY, explanation: `Inaccuracy (${playedSan}). Allowed forced checkmate sequence. Best was ${bestSan}.` };
+      return { classification: Classification.MISTAKE, explanation: `Mistake (${playedSan}). Walked into forced checkmate sequence. Best was ${bestSan}.` };
     }
   }
 
-  // 4. Centipawn to centipawn evaluations (WintrChess expected points loss)
+  // 3. Expected point loss calculation (centipawn to centipawn, or opponent had mate)
   const pointLoss = getExpectedPointsLoss(
-    { type: 'centipawn', value: prevCp },
-    { type: 'centipawn', value: currCp },
+    { type: prevMate !== null ? 'mate' : 'centipawn', value: prevMate ?? prevCp },
+    { type: currMate !== null ? 'mate' : 'centipawn', value: currMate ?? currCp },
     isWhite ? 'w' : 'b'
   );
 
-  if (pointLoss < 0.01) {
+  // Check for Missed Win: mover had decisive winning advantage (>= +250 cp), but threw it away (< +75 cp)
+  if (prevMoverScore >= 250 && currMoverScore < 75 && pointLoss >= 0.15) {
+    return {
+      classification: Classification.MISS,
+      explanation: `Missed win (${playedSan}). Lost winning advantage (+${(prevMoverScore / 100).toFixed(1)} to ${(currMoverScore / 100).toFixed(1)}). Best was ${bestSan}.`
+    };
+  }
+
+  // Standard Expected Point Loss classification
+  if (pointLoss < 0.010) {
     return { classification: Classification.BEST, explanation: `Best move (${playedSan}). Top engine recommendation.` };
   } else if (pointLoss < 0.045) {
     return { classification: Classification.EXCELLENT, explanation: `Excellent move (${playedSan}). Maintains the evaluation without compromise.` };
-  } else if (pointLoss < 0.08) {
+  } else if (pointLoss < 0.080) {
     return { classification: Classification.GOOD, explanation: `Good move (${playedSan}). Sound and playable continuation.` };
-  } else if (pointLoss < 0.12) {
+  } else if (pointLoss < 0.150) {
     return { classification: Classification.INACCURACY, explanation: `Inaccuracy (${playedSan}). Cedes some advantage (${(pointLoss * 100).toFixed(1)}% loss). Best was ${bestSan}.` };
-  } else if (pointLoss < 0.22) {
+  } else if (pointLoss < 0.250) {
     return { classification: Classification.MISTAKE, explanation: `Mistake (${playedSan}). Weakens the position considerably (${(pointLoss * 100).toFixed(1)}% loss). Best was ${bestSan}.` };
   } else {
     return { classification: Classification.BLUNDER, explanation: `Blunder (${playedSan})! Critical mistake shifting the advantage (${(pointLoss * 100).toFixed(1)}% loss). Best was ${bestSan}.` };
@@ -687,7 +810,7 @@ export function pointLossClassify({
 }
 
 /**
- * Classifies a move based on WintrChess rules
+ * Classifies a move based on chess engine evaluations and objective tactical criteria
  */
 export function classifyMove({
   movePlayed,
@@ -710,6 +833,7 @@ export function classifyMove({
   const bestUci = bestMove ? `${bestMove.from}${bestMove.to}${bestMove.promotion || ''}` : null;
   const isTopChoice = playedSan === bestSan || (bestUci && playedUci === bestUci);
   const moverColor = isWhite ? 'w' : 'b';
+  const moverSign = isWhite ? 1 : -1;
 
   // 1. Forced move (if 1 or 0 legal moves)
   if (chessBefore && chessBefore.moves().length <= 1) {
@@ -742,7 +866,7 @@ export function classifyMove({
     } catch {}
   }
 
-  // Short-circuit checkmate as Best
+  // 3. Short-circuit checkmate delivered as Best
   if (chessAfter?.isCheckmate()) {
     return {
       classification: Classification.BEST,
@@ -750,22 +874,9 @@ export function classifyMove({
     };
   }
 
-  const moverScore = (isWhite ? scorePlayed : -scorePlayed);
+  const moverScore = scorePlayed * moverSign;
   const isMoverMate = matePlayed !== null;
-  const moverScoreValue = isMoverMate ? (matePlayed * (isWhite ? 1 : -1)) : moverScore;
-
-  let secondMoverScore = null;
-  let secondTopMovePointLoss = null;
-  if (secondBestLine) {
-    const sCp = secondBestLine.whiteCp ?? secondBestLine.cp ?? 0;
-    const sMate = secondBestLine.mate ?? null;
-    secondMoverScore = sMate !== null ? (sMate * (isWhite ? 1 : -1) * 10000) : (isWhite ? sCp : -sCp);
-    secondTopMovePointLoss = getExpectedPointsLoss(
-      { type: mateBest !== null ? 'mate' : 'centipawn', value: mateBest ?? scoreBest },
-      { type: sMate !== null ? 'mate' : 'centipawn', value: sMate ?? sCp },
-      moverColor
-    );
-  }
+  const mateScore = isMoverMate ? (matePlayed * moverSign) : null;
 
   const pointLoss = getExpectedPointsLoss(
     { type: mateBest !== null ? 'mate' : 'centipawn', value: mateBest ?? scoreBest },
@@ -773,47 +884,42 @@ export function classifyMove({
     moverColor
   );
 
-  // Determine base classification: top move played short-circuits to BEST
-  let baseClassification;
-  let explanation;
-  if (isTopChoice) {
-    baseClassification = Classification.BEST;
-    explanation = `Best move (${playedSan}). Top engine recommendation.`;
-  } else {
-    // Check for missed win only on non-top choices
-    if (winChanceBest >= 68 && winChancePlayed < 52) {
-      baseClassification = Classification.MISS;
-      explanation = `Missed win (${playedSan}). Overlooked a decisive winning sequence. Best was ${bestSan}.`;
-    } else {
-      const pointLossResult = pointLossClassify({
-        prevCp: scoreBest,
-        currCp: scorePlayed,
-        prevMate: mateBest,
-        currMate: matePlayed,
-        isWhite,
-        playedSan,
-        bestSan
-      });
-      baseClassification = pointLossResult.classification;
-      explanation = pointLossResult.explanation;
-    }
-  }
-
-  // 3. Critical / Great Move Check (WintrChess criteria)
+  // 4. Brilliant Move Check (genuine sacrifice maintaining advantage)
   if (
-    isTopChoice &&
     chessAfter &&
-    considerCriticalClassification({
+    isBrilliantSacrifice({
       chessBefore,
       chessAfter,
       playedMove: movePlayed,
-      moverColor,
-      moverScore: moverScoreValue,
+      isWhite,
+      moverScore,
       isMoverMate,
-      secondMoverScore,
-      secondTopMovePointLoss,
+      mateScore,
+      pointLoss,
       isTopChoice,
-      winChancePlayed,
+      secondBestLine
+    })
+  ) {
+    return {
+      classification: Classification.BRILLIANT,
+      explanation: `Brilliant sacrifice (${playedSan})! Sacrifices material while maintaining a decisive advantage.`
+    };
+  }
+
+  // 5. Great Move Check (critical "only move" based on candidate alternatives)
+  if (
+    isTopChoice &&
+    chessAfter &&
+    isGreatMove({
+      chessBefore,
+      chessAfter,
+      playedMove: movePlayed,
+      isWhite,
+      moverScore,
+      isMoverMate,
+      mateScore,
+      isTopChoice,
+      secondBestLine,
       plyIndex
     })
   ) {
@@ -823,31 +929,24 @@ export function classifyMove({
     };
   }
 
-  // 4. Brilliant Move Check (WintrChess criteria)
-  const isTopRanked = baseClassification === Classification.BEST || baseClassification === Classification.GREAT;
-  if (
-    (isTopRanked || pointLoss < 0.01) &&
-    chessAfter &&
-    considerBrilliantClassification({
-      chessBefore,
-      chessAfter,
-      playedMove: movePlayed,
-      moverColor,
-      moverScore: moverScoreValue,
-      isMoverMate,
-      secondMoverScore
-    })
-  ) {
+  // 6. Top choice short-circuits to BEST
+  if (isTopChoice) {
     return {
-      classification: Classification.BRILLIANT,
-      explanation: `Brilliant sacrifice (${playedSan})! Sacrifices material while maintaining a decisive advantage.`
+      classification: Classification.BEST,
+      explanation: `Best move (${playedSan}). Top engine recommendation.`
     };
   }
 
-  return {
-    classification: baseClassification,
-    explanation
-  };
+  // 7. Non-top choices: check for Missed Win or classify by expected point loss
+  return pointLossClassify({
+    prevCp: scoreBest,
+    currCp: scorePlayed,
+    prevMate: mateBest,
+    currMate: matePlayed,
+    isWhite,
+    playedSan,
+    bestSan
+  });
 }
 
 export function createAnalysisPreview(pgnText) {
@@ -926,7 +1025,7 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
   depth = STOCKFISH_SEARCH.depth,
   threads = STOCKFISH_SEARCH.threads,
   hashMb = STOCKFISH_SEARCH.hashMb,
-  multiPv = 1
+  multiPv = STOCKFISH_SEARCH.defaultMultiPv || 2
 } = {}) {
   const chess = new Chess();
 
@@ -1099,10 +1198,12 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
       const afterEval = await evaluateFen(analysisEngine.fen());
       const playedScore = afterEval.whiteCp;
       const moverSign = isWhite ? 1 : -1;
-      const bestWinChance = centipawnsToWinChance(bestScore * moverSign);
-      const playedWinChance = centipawnsToWinChance(playedScore * moverSign);
+      const bestNormCp = normalizeEvaluationToWhiteCp({ whiteCp: bestScore, mate: currentEval.mate });
+      const playedNormCp = normalizeEvaluationToWhiteCp({ whiteCp: playedScore, mate: afterEval.mate });
+      const bestWinChance = centipawnsToWinChance(bestNormCp * moverSign);
+      const playedWinChance = centipawnsToWinChance(playedNormCp * moverSign);
       const winLoss = Math.max(0, bestWinChance - playedWinChance);
-      const cpLoss = Math.max(0, (bestScore - playedScore) * moverSign);
+      const cpLoss = calculateCentipawnLoss(bestScore, playedScore, isWhite, currentEval.mate, afterEval.mate);
       const missedTactic = currentEval.mate !== null &&
         currentEval.mate * moverSign > 0 &&
         !(afterEval.mate !== null && afterEval.mate * moverSign > 0);
@@ -1131,8 +1232,8 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
 
       // Book moves do not penalize player ACPL
       if (!isBookMove) {
-        if (isWhite) whiteCpLossSum += Math.min(10000, effectiveCpLoss);
-        else blackCpLossSum += Math.min(10000, effectiveCpLoss);
+        if (isWhite) whiteCpLossSum += effectiveCpLoss;
+        else blackCpLossSum += effectiveCpLoss;
       }
 
       const annotations = [];
@@ -1147,10 +1248,8 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
         { type: afterEval.mate !== null ? 'mate' : 'centipawn', value: afterEval.mate ?? playedScore },
         isWhite ? 'w' : 'b'
       );
-      const isTopChoice = (executed.san === bestMove.san) ||
-        (bestMove.uci && `${executed.from}${executed.to}${executed.promotion || ''}` === bestMove.uci);
-      const effectivePointLoss = (isTopChoice || isBookMove) ? 0 : pointLoss;
-      const moveAccuracy = calculateMoveAccuracy(effectivePointLoss);
+      const effectivePointLoss = isBookMove ? 0 : pointLoss;
+      const moveAccuracy = isBookMove ? 100 : calculateMoveAccuracy(effectivePointLoss);
 
       analyzedPositions.push({
         ply: i + 1,
@@ -1223,20 +1322,22 @@ export async function analyzePgnGame(pgnText, onProgress = null, {
     engine?.close();
   }
 
-  // Calculate Overall Accuracies & ACPL
+  // Calculate Overall Accuracies & ACPL (excluding book moves from ACPL denominator)
   const whiteMoves = analyzedPositions.filter(p => p.ply > 0 && p.isWhite);
   const blackMoves = analyzedPositions.filter(p => p.ply > 0 && !p.isWhite);
+  const whiteNonBook = whiteMoves.filter(p => !p.isBook);
+  const blackNonBook = blackMoves.filter(p => !p.isBook);
 
   const whiteAccuracy = whiteMoves.length > 0
-    ? Math.round(whiteMoves.reduce((acc, m) => acc + m.accuracy, 0) / whiteMoves.length * 10) / 10
+    ? Math.round((whiteMoves.reduce((acc, m) => acc + m.accuracy, 0) / whiteMoves.length) * 10) / 10
     : 100;
 
   const blackAccuracy = blackMoves.length > 0
-    ? Math.round(blackMoves.reduce((acc, m) => acc + m.accuracy, 0) / blackMoves.length * 10) / 10
+    ? Math.round((blackMoves.reduce((acc, m) => acc + m.accuracy, 0) / blackMoves.length) * 10) / 10
     : 100;
 
-  const whiteAcpl = whiteMoves.length > 0 ? Math.round(whiteCpLossSum / whiteMoves.length) : 0;
-  const blackAcpl = blackMoves.length > 0 ? Math.round(blackCpLossSum / blackMoves.length) : 0;
+  const whiteAcpl = whiteNonBook.length > 0 ? Math.round(whiteCpLossSum / whiteNonBook.length) : 0;
+  const blackAcpl = blackNonBook.length > 0 ? Math.round(blackCpLossSum / blackNonBook.length) : 0;
 
   // Count Classifications
   const countClassifications = (moves) => {

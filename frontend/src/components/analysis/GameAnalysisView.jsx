@@ -226,7 +226,7 @@ export default function GameAnalysisView({
         depth: STOCKFISH_SEARCH.depth,
         threads: STOCKFISH_SEARCH.threads,
         hashMb: STOCKFISH_SEARCH.hashMb,
-        multiPv: 1
+        multiPv: STOCKFISH_SEARCH.defaultMultiPv || 2
       });
 
       if (analysisRunRef.current === runId) {

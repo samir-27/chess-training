@@ -16,6 +16,7 @@ export function selectCommentaryCandidates(report) {
     const winLoss = Number(position.winLoss ?? 0);
     const severe = position.classification === 'blunder' &&
       cpLoss >= COMMENTARY_RULES.blunderCpLoss;
+    const missedWin = position.classification === 'miss';
     const mistake = position.classification === 'mistake' &&
       cpLoss >= COMMENTARY_RULES.mistakeCpLoss;
     const inaccuracy = position.classification === 'inaccuracy' &&
@@ -26,13 +27,13 @@ export function selectCommentaryCandidates(report) {
     const strongTacticalMove = ['brilliant', 'great'].includes(position.classification);
     const criticalDefense = position.inCheckBefore === true &&
       position.bestMove?.uci === position.uci;
-    if (!(severe || mistake || inaccuracy || missedTactic || verifiedHangingPiece || strongTacticalMove || criticalDefense)) {
+    if (!(severe || missedWin || mistake || inaccuracy || missedTactic || verifiedHangingPiece || strongTacticalMove || criticalDefense)) {
       return [];
     }
 
     const before = positions[index - 1];
     if (!before?.fen || !position.bestMove?.san) return [];
-    const priority = severe ? 100 : mistake ? 80 : missedTactic ? 75 :
+    const priority = severe ? 100 : missedWin ? 90 : mistake ? 80 : missedTactic ? 75 :
       verifiedHangingPiece ? 70 : inaccuracy ? 60 : criticalDefense ? 45 : 35;
     return [{
       id: `${position.ply}:${position.uci}`,
@@ -84,6 +85,9 @@ export function createCommentaryFallback(candidate) {
     const pieces = candidate.verifiedFindings.hangingPieces
       .map(({ piece }) => ({ q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' }[piece] || 'piece'));
     return `This move leaves an attacked ${[...new Set(pieces)].join(' and ')} undefended.`;
+  }
+  if (candidate.classification === 'miss') {
+    return `Missed a decisive winning opportunity or checkmate; ${candidate.bestMove.san} was winning.`;
   }
   if (candidate.verifiedFindings.missedWinningMate) {
     return `A forced mate was available, but this move lets the opponent escape it.`;

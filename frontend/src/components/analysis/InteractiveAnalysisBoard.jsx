@@ -71,6 +71,8 @@ function MoveClassificationIcon({ classification }) {
       return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] shadow">?!</span>;
     case Classification.MISTAKE:
       return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-orange-500 text-white font-black text-[11px] shadow">?</span>;
+    case Classification.MISS:
+      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-600 text-white font-black text-[10px] shadow">❌</span>;
     case Classification.BLUNDER:
       return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-600 text-white font-black text-[10px] shadow">??</span>;
     case Classification.BOOK:
@@ -442,12 +444,14 @@ export default function InteractiveAnalysisBoard({
       if (cls === Classification.BOOK) {
         return currentPos.explanation || `📖 Standard theoretical book move.`;
       }
-      if (cls === Classification.BEST) return `★ Best move! Accurately plays the engine's top recommendation.`;
-      if (cls === Classification.EXCELLENT) return `✓ Solid move, preserving the balanced evaluation.`;
-      if (cls === Classification.BRILLIANT) return `Spectacular tactical move that maintains a decisive advantage!`;
-      if (cls === Classification.BLUNDER) return `Critical blunder. Gives away significant advantage; ${currentPos.bestMove?.san || 'better move'} was stronger.`;
-      if (cls === Classification.MISTAKE) return `Clear mistake that weakens the position.`;
-      if (cls === Classification.INACCURACY) return `Inaccuracy that cedes minor advantage.`;
+      if (cls === Classification.BEST) return currentPos.explanation || `★ Best move! Accurately plays the engine's top recommendation.`;
+      if (cls === Classification.GREAT) return currentPos.explanation || `! Great find! A critical move to maintain the initiative.`;
+      if (cls === Classification.EXCELLENT) return currentPos.explanation || `✓ Solid move, preserving the balanced evaluation.`;
+      if (cls === Classification.BRILLIANT) return currentPos.explanation || `Spectacular tactical move that maintains a decisive advantage!`;
+      if (cls === Classification.MISS) return currentPos.explanation || `Missed win! Overlooked a decisive winning sequence or forced checkmate.`;
+      if (cls === Classification.BLUNDER) return currentPos.explanation || `Critical blunder. Gives away significant advantage; ${currentPos.bestMove?.san || 'better move'} was stronger.`;
+      if (cls === Classification.MISTAKE) return currentPos.explanation || `Clear mistake that weakens the position.`;
+      if (cls === Classification.INACCURACY) return currentPos.explanation || `Inaccuracy that cedes minor advantage.`;
     }
     return 'Exploratory branch move. Stockfish is searching this line.';
   }, [isAnalyzing, analysisProgress, frozenLine, variation.cursor, commentary, positions]);
@@ -488,8 +492,8 @@ export default function InteractiveAnalysisBoard({
   // Classification summary stats for Report tab
   const stats = useMemo(() => {
     const counts = {
-      white: { brilliant: 0, critical: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0 },
-      black: { brilliant: 0, critical: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0 }
+      white: { brilliant: 0, critical: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, miss: 0, blunder: 0, book: 0 },
+      black: { brilliant: 0, critical: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, miss: 0, blunder: 0, book: 0 }
     };
     positions.slice(1).forEach((p) => {
       const side = p.isWhite ? 'white' : 'black';
@@ -501,7 +505,8 @@ export default function InteractiveAnalysisBoard({
       else if (c === Classification.GOOD) counts[side].good++;
       else if (c === Classification.INACCURACY) counts[side].inaccuracy++;
       else if (c === Classification.MISTAKE) counts[side].mistake++;
-      else if (c === Classification.BLUNDER || c === Classification.MISS) counts[side].blunder++;
+      else if (c === Classification.MISS) counts[side].miss++;
+      else if (c === Classification.BLUNDER) counts[side].blunder++;
       else if (c === Classification.BOOK) counts[side].book++;
     });
     return counts;
@@ -940,6 +945,7 @@ export default function InteractiveAnalysisBoard({
                       { key: 'good', label: 'Okay', cls: Classification.GOOD, color: 'text-slate-400' },
                       { key: 'inaccuracy', label: 'Inaccuracy', cls: Classification.INACCURACY, color: 'text-yellow-400' },
                       { key: 'mistake', label: 'Mistake', cls: Classification.MISTAKE, color: 'text-orange-400' },
+                      { key: 'miss', label: 'Missed Win', cls: Classification.MISS, color: 'text-rose-400' },
                       { key: 'blunder', label: 'Blunder', cls: Classification.BLUNDER, color: 'text-red-400' },
                       { key: 'book', label: 'Theory', cls: Classification.BOOK, color: 'text-amber-500' }
                     ].map((row) => (
