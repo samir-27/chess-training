@@ -17,6 +17,4 @@ console.log(`📁 Saved to: ${outputPath}`);
 console.log(`📊 Total Puzzles: ${stats.totalPuzzles}`);
 console.log(`   - Verified Positions: ${stats.verifiedCount}`);
 console.log(`   - Chapters created: ${stats.chaptersCount}`);
-console.log(`   - Easy: ${stats.easyCount}`);
-console.log(`   - Intermediate: ${stats.intermediateCount}`);
-console.log(`   - Advanced: ${stats.advancedCount}`);
+console.log(`   - Total Lessons: ${stats.totalCount}`);

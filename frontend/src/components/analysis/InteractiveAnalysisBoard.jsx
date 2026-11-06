@@ -4,6 +4,8 @@ import { Chessboard } from 'react-chessboard';
 import {
   ArrowLeft,
   ArrowLeftRight,
+  BookOpen,
+  Check,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -14,6 +16,7 @@ import {
   Settings,
   Share2,
   Sparkles,
+  ThumbsUp,
   Volume2,
   VolumeX,
   X
@@ -52,32 +55,48 @@ function formatEvaluation(result) {
   return `${cp >= 0 ? '+' : ''}${(cp / 100).toFixed(1)}`;
 }
 
-// Icon badges matching screenshot
+// Icon badges matching professional chess analysis
 function MoveClassificationIcon({ classification }) {
   switch (classification) {
     case Classification.BRILLIANT:
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-500 text-slate-950 font-black text-[11px] shadow">!!</span>;
+      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-500 text-slate-950 font-black text-xs shadow">!!</span>;
     case Classification.GREAT:
     case 'critical':
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-500 text-slate-950 font-black text-[11px] shadow">!</span>;
+      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-sky-500 text-slate-950 font-black text-xs shadow">!</span>;
     case Classification.BEST:
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white font-black text-[12px] shadow leading-none">★</span>;
+      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white font-black text-xs shadow leading-none">★</span>;
     case Classification.EXCELLENT:
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[11px] shadow">👍</span>;
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white shadow">
+          <ThumbsUp size={11} className="stroke-[2.5]" />
+        </span>
+      );
     case Classification.GOOD:
     case 'okay':
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500/80 text-white font-bold text-[11px] shadow">✓</span>;
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500/90 text-white shadow">
+          <Check size={12} className="stroke-[2.5]" />
+        </span>
+      );
     case Classification.INACCURACY:
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] shadow">?!</span>;
+      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-black text-xs shadow">?!</span>;
     case Classification.MISTAKE:
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-orange-500 text-white font-black text-[11px] shadow">?</span>;
+      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-orange-500 text-white font-black text-xs shadow">?</span>;
     case Classification.MISS:
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-600 text-white font-black text-[10px] shadow">❌</span>;
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-600 text-white shadow">
+          <X size={12} className="stroke-[3]" />
+        </span>
+      );
     case Classification.BLUNDER:
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-600 text-white font-black text-[10px] shadow">??</span>;
+      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-600 text-white font-black text-xs shadow">??</span>;
     case Classification.BOOK:
     case 'theory':
-      return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-600 text-white text-[11px] shadow">📖</span>;
+      return (
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-600 text-white shadow">
+          <BookOpen size={11} />
+        </span>
+      );
     default:
       return null;
   }
@@ -609,7 +628,7 @@ export default function InteractiveAnalysisBoard({
         <div className="h-full flex flex-col justify-center items-center overflow-hidden">
           
           {/* Top Player (Opponent) */}
-          <div className="w-full max-w-[560px] flex items-center justify-between px-3 py-1.5 mb-1 bg-slate-900/60 rounded-xl border border-slate-800/80">
+          <div className="w-full max-w-[560px] flex items-center justify-between px-3.5 py-2 mb-1.5 glass-card rounded-xl border border-brand-border">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-amber-400">
                 {topPlayer.name.slice(0, 2).toUpperCase()}
@@ -622,16 +641,16 @@ export default function InteractiveAnalysisBoard({
               )}
             </div>
             {chess.turn() === topPlayer.color && (
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" title="To move" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse ring-2 ring-emerald-500/30" title="To move" />
             )}
           </div>
 
           {/* Board Container + Eval Bar */}
-          <div className="flex items-center justify-center gap-2" ref={boardContainerRef}>
+          <div className="flex items-center justify-center gap-2.5" ref={boardContainerRef}>
             
             {/* Vertical Evaluation Bar */}
             <div
-              className="w-5 shrink-0 rounded-lg bg-slate-950 border border-slate-700/80 overflow-hidden flex flex-col justify-end relative shadow-lg"
+              className="w-5 shrink-0 rounded-xl bg-slate-950 border border-slate-700/80 overflow-hidden flex flex-col justify-end relative shadow-xl"
               style={{ height: boardWidth }}
             >
               {/* White area (bottom up or top down based on orientation) */}
@@ -639,14 +658,14 @@ export default function InteractiveAnalysisBoard({
                 className="w-full bg-slate-100 transition-all duration-300"
                 style={{ height: `${orientation === 'white' ? evalBarPercent : 100 - evalBarPercent}%` }}
               />
-              <span className="absolute bottom-1 left-0 right-0 text-[10px] font-black text-center text-slate-950 mix-blend-difference font-mono">
+              <span className="absolute bottom-1 left-0 right-0 text-xs font-black text-center text-slate-950 mix-blend-difference font-mono leading-none">
                 {formatEvaluation(currentEvaluation)}
               </span>
             </div>
 
             {/* Chessboard Area */}
             <div
-              className="overflow-hidden rounded-xl border-2 border-slate-700/90 bg-[#b58863] shadow-2xl relative"
+              className="overflow-hidden rounded-2xl border-4 border-slate-800/90 ring-1 ring-white/10 bg-[#b58863] shadow-2xl relative"
               style={{ width: boardWidth, height: boardWidth }}
             >
               <Chessboard
@@ -668,7 +687,7 @@ export default function InteractiveAnalysisBoard({
           </div>
 
           {/* Bottom Player (Self) */}
-          <div className="w-full max-w-[560px] flex items-center justify-between px-3 py-1.5 mt-1 bg-slate-900/60 rounded-xl border border-slate-800/80">
+          <div className="w-full max-w-[560px] flex items-center justify-between px-3.5 py-2 mt-1.5 glass-card rounded-xl border border-brand-border">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-sky-400">
                 {bottomPlayer.name.slice(0, 2).toUpperCase()}
@@ -681,31 +700,31 @@ export default function InteractiveAnalysisBoard({
               )}
             </div>
             {chess.turn() === bottomPlayer.color && (
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" title="To move" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse ring-2 ring-emerald-500/30" title="To move" />
             )}
           </div>
         </div>
 
         {/* ================= RIGHT COLUMN: ANALYSIS SIDEBAR ================= */}
-        <div className="h-full max-h-full flex flex-col bg-[#111728] border border-slate-800/80 rounded-2xl p-3 shadow-2xl overflow-hidden">
+        <div className="h-full max-h-full flex flex-col glass-panel border border-brand-border rounded-2xl p-3 shadow-2xl overflow-hidden">
           
-          {/* Header Action: Blue "Game Analysis" Button */}
+          {/* Header Action: Game Analysis Button */}
           <div className="w-full mb-2">
             <button
               type="button"
               onClick={onNewAnalysis}
-              className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-base tracking-wide shadow-lg shadow-blue-600/30 transition-all text-center"
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:brightness-110 active:scale-[0.98] text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-amber-500/20 transition-all text-center cursor-pointer"
             >
               Game Analysis
             </button>
           </div>
 
           {/* Quick Action Icons Row matching Screenshot */}
-          <div className="flex items-center justify-between px-2 py-1 mb-2 bg-slate-900/60 rounded-xl border border-slate-800/80 text-slate-300">
+          <div className="flex items-center justify-between px-2 py-1 mb-2 bg-brand-surface rounded-xl border border-brand-border text-slate-300">
             <button
               type="button"
               onClick={onNewAnalysis}
-              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer active:scale-95"
               title="New Analysis / Load Game"
             >
               <ArrowLeft size={18} />
@@ -713,7 +732,7 @@ export default function InteractiveAnalysisBoard({
             <button
               type="button"
               onClick={() => setOrientation((o) => o === 'white' ? 'black' : 'white')}
-              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer active:scale-95"
               title="Flip Board"
             >
               <ArrowLeftRight size={18} />
@@ -721,7 +740,7 @@ export default function InteractiveAnalysisBoard({
             <button
               type="button"
               onClick={() => setShowSettings(!showSettings)}
-              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer active:scale-95"
               title="Board Settings"
             >
               <Settings size={18} />
@@ -729,7 +748,7 @@ export default function InteractiveAnalysisBoard({
             <button
               type="button"
               onClick={handleShare}
-              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer active:scale-95"
               title="Share / Copy PGN"
             >
               <Share2 size={18} />
@@ -738,29 +757,29 @@ export default function InteractiveAnalysisBoard({
 
           {/* Settings Popover */}
           {showSettings && (
-            <div className="mb-2 p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs space-y-2 animate-fade-in">
+            <div className="mb-2 p-3 glass-card border border-brand-border rounded-xl text-xs space-y-2.5 animate-fadeIn">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-300">Analysis Settings</span>
-                <button type="button" onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white">
+                <span className="font-bold text-white">Analysis Settings</span>
+                <button type="button" onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white cursor-pointer">
                   <X size={14} />
                 </button>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">Best-move arrow</span>
+                <span className="text-slate-300">Best-move arrow</span>
                 <button
                   type="button"
                   onClick={() => setShowBestMoveArrow(!showBestMoveArrow)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold ${showBestMoveArrow ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}`}
+                  className={`px-2.5 py-0.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${showBestMoveArrow ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}`}
                 >
                   {showBestMoveArrow ? 'ON' : 'OFF'}
                 </button>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">Sound effects</span>
+                <span className="text-slate-300">Sound effects</span>
                 <button
                   type="button"
                   onClick={() => setSoundEnabled(!soundEnabled)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold ${soundEnabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}`}
+                  className={`px-2.5 py-0.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${soundEnabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}`}
                 >
                   {soundEnabled ? 'ON' : 'OFF'}
                 </button>
@@ -769,25 +788,25 @@ export default function InteractiveAnalysisBoard({
           )}
 
           {/* Two Main Tabs: Report | Analysis */}
-          <div className="grid grid-cols-2 p-1 mb-2 bg-slate-950 rounded-xl border border-slate-800/80 text-xs font-bold text-center">
+          <div className="grid grid-cols-2 p-1 mb-2 bg-slate-950 rounded-xl border border-brand-border text-xs font-bold text-center">
             <button
               type="button"
               onClick={() => setActiveSideTab('report')}
-              className={`py-2 rounded-lg transition-all ${activeSideTab === 'report' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`py-2 rounded-lg transition-all cursor-pointer ${activeSideTab === 'report' ? 'bg-brand-surface-elevated text-white shadow border border-brand-border/60' : 'text-slate-400 hover:text-slate-200'}`}
             >
               Report
             </button>
             <button
               type="button"
               onClick={() => setActiveSideTab('analysis')}
-              className={`py-2 rounded-lg transition-all ${activeSideTab === 'analysis' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`py-2 rounded-lg transition-all cursor-pointer ${activeSideTab === 'analysis' ? 'bg-brand-surface-elevated text-white shadow border border-brand-border/60' : 'text-slate-400 hover:text-slate-200'}`}
             >
               Analysis
             </button>
           </div>
 
           {/* AI Coach / Status Banner matching screenshot */}
-          <div className="p-2.5 mb-2 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-2 text-xs">
+          <div className="p-3 mb-2 rounded-xl glass-card border border-brand-border flex items-start gap-2.5 text-xs">
             {isAnalyzing ? (
               <div className="w-full space-y-2">
                 <div className="flex items-center justify-between text-amber-400 font-medium">
@@ -797,27 +816,27 @@ export default function InteractiveAnalysisBoard({
                   </span>
                   <span className="font-mono text-xs font-bold text-amber-300">{analysisProgress}%</span>
                 </div>
-                <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+                <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-brand-border">
                   <div
                     className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-300"
                     style={{ width: `${Math.max(4, analysisProgress)}%` }}
                   />
                 </div>
                 {variation.cursor > 0 && positions[variation.cursor]?.classification ? (
-                  <p className="text-slate-300 text-[11px] pt-1 border-t border-slate-800/80 leading-relaxed">
+                  <p className="text-slate-300 text-xs pt-1.5 border-t border-brand-border leading-relaxed">
                     <strong className="text-amber-400 font-mono">Move {Math.ceil(variation.cursor / 2)}:</strong> {activeCommentaryText}
                   </p>
                 ) : (
-                  <p className="text-slate-400 text-[10px]">
+                  <p className="text-slate-400 text-xs">
                     Evaluating positions in real time · Click any move to inspect
                   </p>
                 )}
               </div>
             ) : (
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <Sparkles size={13} className="text-amber-400 shrink-0" />
-                  <span className="font-bold text-slate-200 text-[11px] uppercase tracking-wide">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles size={14} className="text-amber-400 shrink-0" />
+                  <span className="font-bold text-slate-200 text-xs uppercase tracking-wide">
                     {variation.cursor > 0 ? `Move ${Math.ceil(variation.cursor / 2)}` : 'Game Coach'}
                   </span>
                   {positions[variation.cursor]?.classification && (
@@ -826,7 +845,7 @@ export default function InteractiveAnalysisBoard({
                     </span>
                   )}
                 </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed break-words">
+                <p className="text-slate-300 text-xs leading-relaxed break-words">
                   {activeCommentaryText}
                 </p>
               </div>

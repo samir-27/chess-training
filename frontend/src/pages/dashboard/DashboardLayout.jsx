@@ -187,6 +187,10 @@ export default function DashboardLayout() {
               return;
             }
           }
+        } else if (curIdx >= cycle.puzzleIds.length - 1) {
+          // Completed the final puzzle in the cycle (Puzzle 700)! Return to Woodpecker dashboard
+          navigateToTab('woodpecker');
+          return;
         }
       }
     }

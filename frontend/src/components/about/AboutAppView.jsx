@@ -15,14 +15,14 @@ import {
 
 export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis }) {
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-10 animate-fadeIn">
+    <div className="max-w-5xl mx-auto px-4 py-6 lg:py-8 space-y-10 animate-fadeIn">
       
       {/* Hero Header */}
-      <div className="bg-gradient-to-br from-[#131c31] via-[#0f1526] to-[#0a0e19] border border-amber-500/30 rounded-3xl p-6 lg:p-10 shadow-2xl relative overflow-hidden">
+      <div className="glass-panel border border-amber-500/30 rounded-3xl p-6 lg:p-10 shadow-2xl relative overflow-hidden">
         <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
 
         <div className="space-y-4 max-w-3xl relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-xs font-semibold uppercase tracking-wider">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 font-mono text-xs font-semibold uppercase tracking-wider">
             <Sparkles size={14} />
             <span>Chess Wizards Platform</span>
           </div>
@@ -31,21 +31,21 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis 
             About <span className="text-amber-400">Chess Wizards</span>
           </h1>
 
-          <p className="text-base text-slate-300 leading-relaxed">
-            <strong className="text-white">Chess Wizards</strong> is an all-in-one chess training and game review platform designed to sharpen your tactical intuition and elevate your understanding of every move. Built entirely for your browser with zero latency, zero mandatory accounts, and maximum privacy.
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+            <strong className="text-white">Chess Wizards</strong> is an all-in-one chess tactical training and game analysis platform designed to sharpen subconscious pattern recognition and provide deep, grandmaster-grade game reviews. Built entirely for your browser with zero latency, zero mandatory accounts, and maximum privacy.
           </p>
 
           <div className="pt-2 flex flex-wrap gap-3">
             <button
               onClick={onNavigateWoodpecker}
-              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-sm shadow-xl shadow-amber-500/20 hover:brightness-110 transition-all"
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-sm shadow-xl shadow-amber-500/20 hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
             >
               <Zap size={18} />
               <span>Train Woodpecker Method</span>
             </button>
             <button
               onClick={onNavigateAnalysis}
-              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-900 border border-slate-800 text-slate-200 hover:text-white hover:border-slate-700 text-sm font-semibold transition-all"
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-brand-surface border border-brand-border text-slate-200 hover:text-white hover:border-slate-700 text-sm font-semibold active:scale-[0.98] transition-all cursor-pointer"
             >
               <Activity size={18} />
               <span>Analyze Game PGN</span>
@@ -58,19 +58,19 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Pillar 1: Woodpecker Method */}
-        <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4 flex flex-col justify-between hover:border-slate-700 transition-all">
+        <div className="glass-card border border-brand-border rounded-3xl p-6 shadow-xl space-y-4 flex flex-col justify-between hover:border-slate-700 transition-all">
           <div className="space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
               <Zap size={24} />
             </div>
             <h3 className="text-lg font-bold text-white tracking-tight">The Woodpecker Method</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Systematic spaced-repetition tactical training created by GM Hans Tikkanen and GM Axel Smith. Solve all 1,131 curated master puzzles in cycles, halving the time with every iteration to build unconscious tactical reflexes.
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Systematic spaced-repetition tactical training created by GM Hans Tikkanen and GM Axel Smith. Solve all 700 curated master puzzles in cycles, halving the target duration with every iteration to build unconscious tactical reflexes.
             </p>
           </div>
           <button
             onClick={onNavigateWoodpecker}
-            className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 pt-2"
+            className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 pt-2 cursor-pointer transition-colors"
           >
             <span>Explore Cycles</span>
             <ArrowRight size={14} />
@@ -78,19 +78,19 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis 
         </div>
 
         {/* Pillar 2: Game Analysis */}
-        <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4 flex flex-col justify-between hover:border-slate-700 transition-all">
+        <div className="glass-card border border-brand-border rounded-3xl p-6 shadow-xl space-y-4 flex flex-col justify-between hover:border-slate-700 transition-all">
           <div className="space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center">
               <Activity size={24} />
             </div>
             <h3 className="text-lg font-bold text-white tracking-tight">Grandmaster Game Analysis</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Upload or paste a PGN for move-by-move analysis with the bundled local Stockfish engine. Review evaluation, principal variations, centipawn loss, and tactical classifications directly in your browser.
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Import games directly from Chess.com or upload any PGN for move-by-move evaluation with the bundled local Stockfish engine. Review evaluation graphs, principal variations, centipawn loss, and authentic move classifications directly in your browser.
             </p>
           </div>
           <button
             onClick={onNavigateAnalysis}
-            className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 pt-2"
+            className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 hover:text-sky-300 pt-2 cursor-pointer transition-colors"
           >
             <span>Review a Game</span>
             <ArrowRight size={14} />
@@ -100,49 +100,49 @@ export default function AboutAppView({ onNavigateWoodpecker, onNavigateAnalysis 
       </div>
 
       {/* Why Choose Chess Wizards */}
-      <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 lg:p-8 shadow-xl space-y-6">
-        <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+      <div className="glass-panel border border-brand-border rounded-3xl p-6 lg:p-8 shadow-xl space-y-6">
+        <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2.5">
           <Trophy size={20} className="text-amber-400" />
           <span>Why Chess Wizards?</span>
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-brand-surface/60 border border-brand-border">
             <ShieldCheck size={20} className="text-amber-400 shrink-0 mt-0.5" />
             <div>
               <h4 className="text-sm font-bold text-white">100% Client-Side Privacy</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                Your PGN games, training attempts, and cycle stats are stored strictly inside your browser's local storage. No trackers, no accounts, and no data uploaded to external servers.
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                Your PGN games, training attempts, and cycle stats are stored strictly inside your browser's local storage. No trackers, no accounts required, and no data uploaded to external servers.
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-brand-surface/60 border border-brand-border">
             <Cpu size={20} className="text-sky-400 shrink-0 mt-0.5" />
             <div>
               <h4 className="text-sm font-bold text-white">Local Stockfish Game Review</h4>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                 Reproducible, single-thread Stockfish searches at a fixed depth. Each position is evaluated independently with the engine's transposition table reset, and scores are normalized to White's perspective.
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-brand-surface/60 border border-brand-border">
             <Flame size={20} className="text-rose-400 shrink-0 mt-0.5" />
             <div>
               <h4 className="text-sm font-bold text-white">Authentic Move Classifications</h4>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                 Rigorous chess.com and Lichess style criteria for Brilliant sacrifices (!!), Great moves (!), Best moves, Book theory, Inaccuracies, Mistakes, and Blunders.
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-900/60 border border-slate-800">
+          <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-brand-surface/60 border border-brand-border">
             <CheckCircle2 size={20} className="text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-white">Official 1,131 Woodpecker Corpus</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                All 1,131 exercises from the original Woodpecker Method book categorized into Easy, Intermediate, and Advanced sections with instant move validation.
+              <h4 className="text-sm font-bold text-white">Curated 700 Woodpecker Corpus</h4>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                All 700 curated tactical exercises for the Woodpecker Method training regimen with instant move validation and multi-cycle speed tracking.
               </p>
             </div>
           </div>

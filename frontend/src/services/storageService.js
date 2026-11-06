@@ -86,26 +86,26 @@ class StorageService {
     const currentSettings = this.getSettings();
     soundManager.setSettings(currentSettings.soundEnabled, currentSettings.soundVolume);
 
-    // Initialize Courses with Woodpecker Master Course if empty
+    // Initialize Courses with Woodpecker Master Course (700 Puzzles)
     const courses = this.getJson(KEYS.COURSES, {});
-    if (!courses[woodpeckerCourseData.id]) {
+    if (!courses[woodpeckerCourseData.id] || courses[woodpeckerCourseData.id]?.stats?.totalLessons !== 700) {
       courses[woodpeckerCourseData.id] = woodpeckerCourseData;
       this.setJson(KEYS.COURSES, courses);
     }
 
     // Start First Woodpecker Cycle by default if no cycles exist
     const cycles = this.getJson(KEYS.CYCLES, []);
-    if (cycles.length === 0 && woodpeckerCourseData?.chapters?.[0]) {
-      const easyPuzzles = woodpeckerCourseData.chapters[0].lessons.map(l => l.id);
+    const all700Ids = woodpeckerCourseData?.chapters?.[0]?.lessons?.map(l => l.id) || [];
+
+    if (cycles.length === 0 && all700Ids.length > 0) {
       const defaultCycle = {
         id: `cycle-1-default`,
         cycleNumber: 1,
         courseId: woodpeckerCourseData.id,
-        name: 'Cycle 1: Easy Exercises (1–222)',
-        puzzleFilter: 'easy',
+        name: 'Cycle 1',
         targetDays: 28,
-        targetDaily: Math.ceil(easyPuzzles.length / 28),
-        puzzleIds: easyPuzzles,
+        targetDaily: Math.ceil(all700Ids.length / 28),
+        puzzleIds: all700Ids,
         status: 'active',
         startDate: new Date().toISOString(),
         completedDate: null,
@@ -113,6 +113,28 @@ class StorageService {
         totalTimeMs: 0
       };
       this.setJson(KEYS.CYCLES, [defaultCycle]);
+    } else if (cycles.length > 0 && all700Ids.length === 700) {
+      // Auto-migrate any legacy cycle names or puzzle counts
+      let migrated = false;
+      const updatedCycles = cycles.map(c => {
+        const needsFix = !c.puzzleIds || c.puzzleIds.length !== 700 || c.name !== `Cycle ${c.cycleNumber}`;
+        if (needsFix) {
+          migrated = true;
+          return {
+            ...c,
+            name: `Cycle ${c.cycleNumber}`,
+            puzzleIds: all700Ids,
+            targetDaily: Math.ceil(700 / (c.targetDays || 28)),
+            completedPuzzles: Object.fromEntries(
+              Object.entries(c.completedPuzzles || {}).filter(([pid]) => all700Ids.includes(pid))
+            )
+          };
+        }
+        return c;
+      });
+      if (migrated) {
+        this.setJson(KEYS.CYCLES, updatedCycles);
+      }
     }
   }
 
@@ -264,12 +286,10 @@ class StorageService {
 
   createCycle({
     courseId = woodpeckerCourseData.id,
-    name = 'Woodpecker Cycle 1',
-    puzzleFilter = 'all', // 'all' | 'easy' | 'intermediate' | 'advanced' | 'custom'
+    name = '',
     targetDays = 28,
-    targetDaily = 40,
-    puzzleIds = []
-  }) {
+    puzzleIds = null
+  } = {}) {
     const cycles = this.getAllCycles();
 
     // Mark any current active cycle as paused
@@ -277,20 +297,67 @@ class StorageService {
       if (c.status === 'active') c.status = 'paused';
     });
 
+    const allPuzzles = woodpeckerCourseData?.chapters?.[0]?.lessons?.map(l => l.id) || [];
     const cycleNumber = cycles.length + 1;
+    const finalDays = Number(targetDays) || 28;
+    const finalPuzzleIds = (Array.isArray(puzzleIds) && puzzleIds.length === 700) ? puzzleIds : allPuzzles;
+
     const newCycle = {
       id: `cycle-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       cycleNumber,
       courseId,
-      name: name || `Cycle ${cycleNumber}`,
-      puzzleFilter,
-      targetDays: Number(targetDays) || 28,
-      targetDaily: Number(targetDaily) || 40,
-      puzzleIds: Array.isArray(puzzleIds) ? puzzleIds : [],
+      name: `Cycle ${cycleNumber}`,
+      targetDays: finalDays,
+      targetDaily: Math.ceil(finalPuzzleIds.length / finalDays),
+      puzzleIds: finalPuzzleIds,
       status: 'active',
       startDate: new Date().toISOString(),
       completedDate: null,
       completedPuzzles: {}, // map: { [puzzleId]: { isSolved, durationMs, timestamp } }
+      totalTimeMs: 0
+    };
+
+    cycles.push(newCycle);
+    this.setJson(KEYS.CYCLES, cycles);
+    return newCycle;
+  }
+
+  startNextCycle(currentCycleId = null) {
+    const cycles = this.getAllCycles();
+    const current = currentCycleId ? cycles.find(c => c.id === currentCycleId) : this.getActiveCycle();
+
+    let nextTargetDays = 14;
+    let nextCycleNum = cycles.length + 1;
+
+    if (current) {
+      if (current.status !== 'completed') {
+        current.status = 'completed';
+        if (!current.completedDate) current.completedDate = new Date().toISOString();
+      }
+      // Woodpecker Halving Schedule: 28 -> 14 -> 7 -> 4 -> 2 -> 1
+      const curDays = current.targetDays || 28;
+      nextTargetDays = Math.max(1, Math.round(curDays / 2));
+      nextCycleNum = (current.cycleNumber || cycles.length) + 1;
+    }
+
+    // Pause all other active cycles
+    cycles.forEach(c => {
+      if (c.status === 'active') c.status = 'completed';
+    });
+
+    const allPuzzles = woodpeckerCourseData?.chapters?.[0]?.lessons?.map(l => l.id) || [];
+    const newCycle = {
+      id: `cycle-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      cycleNumber: nextCycleNum,
+      courseId: woodpeckerCourseData.id,
+      name: `Cycle ${nextCycleNum}`,
+      targetDays: nextTargetDays,
+      targetDaily: Math.ceil(allPuzzles.length / nextTargetDays),
+      puzzleIds: allPuzzles,
+      status: 'active',
+      startDate: new Date().toISOString(),
+      completedDate: null,
+      completedPuzzles: {},
       totalTimeMs: 0
     };
 
@@ -312,8 +379,8 @@ class StorageService {
     };
     cycle.totalTimeMs = (cycle.totalTimeMs || 0) + durationMs;
 
-    // Check if cycle is complete
-    const totalRequired = cycle.puzzleIds.length;
+    // Check if cycle is complete (all 700 puzzles solved)
+    const totalRequired = cycle.puzzleIds?.length || 700;
     const solvedCount = Object.values(cycle.completedPuzzles).filter(p => p.isSolved).length;
     if (totalRequired > 0 && solvedCount >= totalRequired) {
       cycle.status = 'completed';
@@ -351,14 +418,12 @@ class StorageService {
 
   startDefaultCycle() {
     if (woodpeckerCourseData?.chapters?.[0]) {
-      const easyPuzzles = woodpeckerCourseData.chapters[0].lessons.map(l => l.id);
+      const allPuzzles = woodpeckerCourseData.chapters[0].lessons.map(l => l.id);
       return this.createCycle({
         courseId: woodpeckerCourseData.id,
-        name: 'Cycle 1: Easy Exercises (1–222)',
-        puzzleFilter: 'easy',
+        name: 'Cycle 1 (700 Puzzles)',
         targetDays: 28,
-        targetDaily: Math.ceil(easyPuzzles.length / 28),
-        puzzleIds: easyPuzzles
+        puzzleIds: allPuzzles
       });
     }
     return null;

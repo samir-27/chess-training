@@ -12,32 +12,16 @@ import {
 export const WOODPECKER_COURSE_ID = 'course-woodpecker-method';
 
 /**
- * Converts legacy woodpeckerPuzzles array into a unified Course object
+ * Converts woodpeckerPuzzles array into a unified 700-puzzle Course object
  */
 export function migrateWoodpeckerData() {
-  const chapters = [
-    createChapterTemplate({
-      id: 'woodpecker-ch-easy',
-      title: 'Easy Exercises (1–222)',
-      description: 'Foundational tactical patterns. Solve these quickly to build instinctive pattern recognition.',
-      order: 1,
-      lessons: []
-    }),
-    createChapterTemplate({
-      id: 'woodpecker-ch-intermediate',
-      title: 'Intermediate Exercises (223–984)',
-      description: 'Deep tactics, sacrifices, and multi-move forcing lines designed for GM-level sharpness.',
-      order: 2,
-      lessons: []
-    }),
-    createChapterTemplate({
-      id: 'woodpecker-ch-advanced',
-      title: 'Advanced Exercises (985–1128)',
-      description: 'Extremely challenging calculation positions to test visualization at the highest level.',
-      order: 3,
-      lessons: []
-    })
-  ];
+  const masterChapter = createChapterTemplate({
+    id: 'woodpecker-ch-master',
+    title: 'Woodpecker Regimen (700 Puzzles)',
+    description: '700 curated tactical positions. Solve all 700 puzzles in each cycle, aiming to halve your total time on every pass.',
+    order: 1,
+    lessons: []
+  });
 
   let verifiedCount = 0;
   let fixedCount = 0;
@@ -83,43 +67,42 @@ export function migrateWoodpeckerData() {
     const lesson = createLessonTemplate({
       id: String(puzzleId),
       type: isHeaderCard ? LessonType.STUDY : LessonType.PUZZLE,
-      title: p.title || `Exercise ${puzzleId}`,
-      description: p.description || '',
-      hint: p.hint || '',
+      title: p.title || `Exercise ${i + 1}: ${sideToMove === 'white' ? 'White' : 'Black'} to Move`,
+      description: p.description || `${sideToMove === 'white' ? 'White' : 'Black'} to move. Find the best tactical continuation.`,
+      hint: p.hint || 'Find the most forcing tactical continuation.',
       fen: startingFen,
       orientation: sideToMove,
       solution: validMoves.length > 0 ? validMoves : solution,
-      solutionUci: validUci,
+      solutionUci: validUci.length > 0 ? validUci : (p.solutionUci || []),
       alternateSolutions: [],
       moveComments: {},
       metadata: {
-        legacyId: puzzleId,
+        puzzleIndex: i + 1,
+        totalPuzzles: woodpeckerPuzzles.length,
+        id: puzzleId,
+        rating: p.rating,
+        themes: p.themes,
+        preMove: p.preMove,
+        preMoveFen: p.preMoveFen,
         source: 'The Woodpecker Method',
         authors: 'Hans Tikkanen & Axel Smith'
       }
     });
 
-    // Assign to chapter based on puzzle ID / title
-    if (puzzleId <= 222) {
-      chapters[0].lessons.push(lesson);
-    } else if (puzzleId <= 986) {
-      chapters[1].lessons.push(lesson);
-    } else {
-      chapters[2].lessons.push(lesson);
-    }
+    masterChapter.lessons.push(lesson);
   }
 
   const rawCourse = createCourseTemplate({
     id: WOODPECKER_COURSE_ID,
     title: 'The Woodpecker Method',
-    description: 'Axel Smith and Hans Tikkanen’s world-renowned tactical training regimen. Sharpen your tactical intuition through spaced, repeated cycles.',
+    description: '700 curated tactical puzzles for the Woodpecker Method. Retrain your tactical subconscious through repetitive cycles.',
     author: 'Hans Tikkanen & Axel Smith',
     category: CourseCategory.WOODPECKER,
     difficulty: 'All Levels',
     tags: ['tactics', 'woodpecker', 'repetition', 'speed', 'patterns'],
     sourceFormat: 'json',
-    sourceFile: 'src/data/woodpeckerPuzzles.js',
-    chapters
+    sourceFile: 'src/data/woodpeckerCourse.json',
+    chapters: [masterChapter]
   });
 
   const normalized = validateAndNormalizeCourse(rawCourse);
@@ -130,10 +113,8 @@ export function migrateWoodpeckerData() {
       totalPuzzles: woodpeckerPuzzles.length,
       verifiedCount,
       fixedCount,
-      chaptersCount: chapters.length,
-      easyCount: chapters[0].lessons.length,
-      intermediateCount: chapters[1].lessons.length,
-      advancedCount: chapters[2].lessons.length
+      chaptersCount: 1,
+      totalCount: masterChapter.lessons.length
     }
   };
 }

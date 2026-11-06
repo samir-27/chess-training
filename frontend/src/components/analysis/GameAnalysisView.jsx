@@ -396,11 +396,11 @@ export default function GameAnalysisView({
       ) : (
         /* 2. Minimalist Single-Screen Game Selection */
         <div className="max-w-3xl w-full mx-auto px-4 py-6 overflow-y-auto max-h-full">
-          <div className="bg-[#101524] border border-slate-800 rounded-3xl p-5 sm:p-7 space-y-4 shadow-2xl animate-fade-in">
+          <div className="glass-panel border border-brand-border rounded-3xl p-5 sm:p-7 space-y-4 shadow-2xl animate-fadeIn">
             
             {/* Header */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 shrink-0 shadow-md">
                 <Activity size={20} />
               </div>
               <div>
@@ -422,14 +422,14 @@ export default function GameAnalysisView({
             )}
 
             {/* Main Tabs */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 rounded-2xl border border-slate-800 text-xs font-semibold">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 rounded-2xl border border-brand-border text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setActiveTab('chesscom')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl transition-all cursor-pointer ${
                   activeTab === 'chesscom'
-                    ? 'bg-blue-600 text-white shadow-md font-bold'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                 }`}
               >
                 <Globe size={14} />
@@ -439,10 +439,10 @@ export default function GameAnalysisView({
               <button
                 type="button"
                 onClick={() => setActiveTab('paste')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl transition-all cursor-pointer ${
                   activeTab === 'paste'
-                    ? 'bg-blue-600 text-white shadow-md font-bold'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                 }`}
               >
                 <ClipboardPaste size={14} />
@@ -452,10 +452,10 @@ export default function GameAnalysisView({
               <button
                 type="button"
                 onClick={() => setActiveTab('upload')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl transition-all cursor-pointer ${
                   activeTab === 'upload'
-                    ? 'bg-blue-600 text-white shadow-md font-bold'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                 }`}
               >
                 <Upload size={14} />

@@ -12,9 +12,7 @@ export default function WoodpeckerView({ onStartTraining }) {
   const [activeCycle, setActiveCycle] = useState(() => storage.getActiveCycle());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState('easy'); // 'easy' | 'all' | 'intermediate' | 'advanced'
-  const [targetDays, setTargetDays] = useState(14);
-  const [cycleName, setCycleName] = useState('');
+  const [targetDays, setTargetDays] = useState(28);
 
   const refreshData = () => {
     setCycles(storage.getAllCycles());
@@ -30,36 +28,27 @@ export default function WoodpeckerView({ onStartTraining }) {
     const course = storage.getCourseById('course-woodpecker-method');
     if (!course) return;
 
-    let puzzleIds = [];
-    if (selectedPreset === 'easy') {
-      puzzleIds = course.chapters[0]?.lessons.map((l) => l.id) || [];
-    } else if (selectedPreset === 'intermediate') {
-      puzzleIds = course.chapters[1]?.lessons.map((l) => l.id) || [];
-    } else if (selectedPreset === 'advanced') {
-      puzzleIds = course.chapters[2]?.lessons.map((l) => l.id) || [];
-    } else {
-      puzzleIds = course.chapters.flatMap((ch) => ch.lessons.map((l) => l.id));
-    }
-
+    const puzzleIds = course.chapters[0]?.lessons.map((l) => l.id) || [];
     const nextCycleNum = cycles.length + 1;
-    const name = cycleName.trim() || `Cycle ${nextCycleNum} (${selectedPreset.toUpperCase()})`;
 
     storage.createCycle({
       courseId: course.id,
-      name,
-      puzzleFilter: selectedPreset,
-      targetDays: Number(targetDays) || 14,
-      targetDaily: Math.ceil(puzzleIds.length / (Number(targetDays) || 14)),
+      name: `Cycle ${nextCycleNum}`,
+      targetDays: Number(targetDays) || 28,
       puzzleIds
     });
 
     setShowCreateModal(false);
-    setCycleName('');
     refreshData();
   };
 
   const handleStartDefaultCycle = () => {
     storage.startDefaultCycle();
+    refreshData();
+  };
+
+  const handleStartNextCycle = () => {
+    storage.startNextCycle(activeCycle?.id);
     refreshData();
   };
 
@@ -95,32 +84,36 @@ export default function WoodpeckerView({ onStartTraining }) {
   };
 
   const cycleComparisons = compareWoodpeckerCycles();
+  const currentCycleNumber = activeCycle ? activeCycle.cycleNumber : (cycles.length > 0 ? cycles[cycles.length - 1].cycleNumber : 1);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 py-6 lg:py-8 space-y-8 animate-fadeIn">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="p-1 rounded bg-amber-500/20 text-amber-400">
-              <Zap size={16} />
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="p-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Zap size={15} />
             </span>
-            <span className="text-xs font-mono uppercase tracking-widest text-amber-500 font-semibold">
-              Tikkanen & Smith Method
+            <span className="text-xs font-mono uppercase tracking-widest text-amber-400 font-semibold">
+              Tikkanen & Smith Method • 700 Puzzles
+            </span>
+            <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 font-bold border border-amber-500/30">
+              Current Cycle: #{currentCycleNumber}
             </span>
           </div>
           <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
             Woodpecker Cycles
           </h1>
-          <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            Retrain your subconscious tactical pattern recognition. Aim to halve your solving time on each successive cycle.
+          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
+            Retrain your subconscious tactical pattern recognition across all 700 curated puzzles. Complete every puzzle in each cycle and aim to halve your time on each iteration.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-center">
+        <div className="flex items-center gap-3 self-start sm:self-center">
           <button
             onClick={() => setShowGuideModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-semibold transition-all shadow-sm cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-surface border border-brand-border text-slate-300 hover:text-white hover:border-slate-700 text-xs font-semibold active:scale-[0.98] transition-all shadow-sm cursor-pointer"
           >
             <BookOpen size={15} className="text-amber-400" />
             <span>How Woodpecker Works</span>
@@ -128,7 +121,7 @@ export default function WoodpeckerView({ onStartTraining }) {
 
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:brightness-110 transition-all cursor-pointer"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
           >
             <Plus size={16} />
             <span>New Cycle</span>
@@ -142,6 +135,7 @@ export default function WoodpeckerView({ onStartTraining }) {
         onResumeActive={handleResumeActive}
         onDeleteCycle={handleDeleteCycle}
         onStartDefaultCycle={handleStartDefaultCycle}
+        onStartNextCycle={handleStartNextCycle}
         onOpenCreateModal={() => setShowCreateModal(true)}
       />
 
@@ -165,11 +159,7 @@ export default function WoodpeckerView({ onStartTraining }) {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreateCycle}
-        cycleName={cycleName}
-        setCycleName={setCycleName}
         cyclesCount={cycles.length}
-        selectedPreset={selectedPreset}
-        setSelectedPreset={setSelectedPreset}
         targetDays={targetDays}
         setTargetDays={setTargetDays}
       />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X, Shield, LogIn, UserPlus } from 'lucide-react';
 import { loginAccount, registerAccount } from '../../services/authService.js';
 
 export default function AccountModal({ isOpen, onClose, onAuthenticated }) {
@@ -35,23 +35,28 @@ export default function AccountModal({ isOpen, onClose, onAuthenticated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-fadeIn">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="account-modal-title"
-        className="w-full max-w-md rounded-3xl border border-slate-800 bg-[#0F1424] p-6 shadow-2xl"
+        className="w-full max-w-md rounded-3xl border border-brand-border glass-panel p-6 sm:p-7 shadow-2xl relative"
       >
         <div className="mb-6 flex items-start justify-between">
           <div>
-            <h2 id="account-modal-title" className="text-xl font-bold text-white">
+            <h2 id="account-modal-title" className="text-xl font-bold text-white tracking-tight">
               {mode === 'register' ? 'Create your account' : 'Welcome back'}
             </h2>
             <p className="mt-1 text-xs text-slate-400">
-              Your saved analyses stay with your account.
+              Your saved analyses and preferences stay with your account.
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-xl p-2 text-slate-400 hover:bg-slate-800 hover:text-white border border-transparent hover:border-brand-border transition-colors cursor-pointer"
+          >
             <X size={18} />
           </button>
         </div>
@@ -66,7 +71,7 @@ export default function AccountModal({ isOpen, onClose, onAuthenticated }) {
               maxLength={254}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-amber-500"
+              className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-xs text-white outline-none focus:border-amber-500 transition-colors"
             />
           </label>
 
@@ -80,17 +85,17 @@ export default function AccountModal({ isOpen, onClose, onAuthenticated }) {
               maxLength={128}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-amber-500"
+              className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-xs text-white outline-none focus:border-amber-500 transition-colors"
             />
             {mode === 'register' && (
-              <span className="block text-[11px] text-slate-500">Use at least 8 characters.</span>
+              <span className="block text-xs text-slate-400">Use at least 8 characters.</span>
             )}
           </label>
 
           {mode === 'register' && (
             <label className="block space-y-1.5">
               <span className="text-xs font-semibold text-slate-300">
-                Chess.com username <span className="font-normal text-slate-500">(optional)</span>
+                Chess.com username <span className="font-normal text-slate-400">(optional)</span>
               </span>
               <input
                 type="text"
@@ -99,24 +104,25 @@ export default function AccountModal({ isOpen, onClose, onAuthenticated }) {
                 value={chessComUsername}
                 onChange={(event) => setChessComUsername(event.target.value)}
                 placeholder="Your public Chess.com username"
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-amber-500"
+                className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-xs text-white outline-none focus:border-amber-500 transition-colors"
               />
-              <span className="block text-[11px] text-slate-500">
-                Used only to prefill the recent-games importer. No Chess.com password is needed.
+              <span className="block text-xs text-slate-400">
+                Used only to prefill the recent-games importer. No Chess.com password needed.
               </span>
             </label>
           )}
 
           {errorMessage && (
             <p role="alert" className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">
-              <AlertCircle size={15} /> {errorMessage}
+              <AlertCircle size={15} className="shrink-0" />
+              <span>{errorMessage}</span>
             </p>
           )}
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 py-3 text-xs font-bold text-slate-950 shadow-lg shadow-amber-500/20 hover:brightness-110 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
           >
             {isSubmitting ? 'Please wait...' : mode === 'register' ? 'Create account' : 'Sign in'}
           </button>
@@ -127,7 +133,7 @@ export default function AccountModal({ isOpen, onClose, onAuthenticated }) {
           <button
             type="button"
             onClick={() => switchMode(mode === 'register' ? 'login' : 'register')}
-            className="font-semibold text-amber-400 hover:text-amber-300"
+            className="font-semibold text-amber-400 hover:text-amber-300 cursor-pointer transition-colors"
           >
             {mode === 'register' ? 'Sign in' : 'Create an account'}
           </button>

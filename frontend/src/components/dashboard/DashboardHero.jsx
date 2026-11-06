@@ -50,7 +50,7 @@ export default function DashboardHero({
         <div className="flex flex-col sm:flex-row items-center gap-3">
           <button
             onClick={onResumeClick}
-            className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/25 hover:brightness-110 transition-all group"
+            className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/25 hover:brightness-110 transition-all group cursor-pointer"
           >
             <Play size={20} className="fill-current group-hover:scale-110 transition-transform" />
             <span>Resume Woodpecker</span>

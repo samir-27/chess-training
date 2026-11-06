@@ -1,14 +1,14 @@
 import React from 'react';
-import { BookOpen, X, Sparkles, Trophy, Brain } from 'lucide-react';
+import { BookOpen, X, Sparkles, Trophy, Brain, Clock, ShieldCheck } from 'lucide-react';
 
 export default function WoodpeckerGuideModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-      <div className="bg-[#0F1424] border border-slate-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+      <div className="glass-panel border border-brand-border rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between p-5 lg:p-6 border-b border-slate-800/80 bg-[#111728] shrink-0">
+        <div className="flex items-center justify-between p-5 lg:p-6 border-b border-brand-border bg-brand-surface shrink-0">
           <div className="flex items-center gap-3">
             <span className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <BookOpen size={20} />
@@ -21,7 +21,7 @@ export default function WoodpeckerGuideModal({ isOpen, onClose }) {
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-2 rounded-xl bg-slate-900 border border-brand-border text-slate-400 hover:text-white hover:border-slate-700 transition-colors cursor-pointer"
             title="Close guide"
           >
             <X size={18} />
@@ -29,9 +29,9 @@ export default function WoodpeckerGuideModal({ isOpen, onClose }) {
         </div>
 
         {/* Modal Scrollable Content */}
-        <div className="p-6 lg:p-8 overflow-y-auto space-y-6">
+        <div className="p-6 lg:p-8 overflow-y-auto space-y-6 scrollbar-thin">
           {/* Method Hero Banner */}
-          <div className="bg-gradient-to-br from-[#12192d] via-[#0e1424] to-[#0a0e19] border border-amber-500/30 rounded-3xl p-6 lg:p-8 shadow-2xl relative overflow-hidden">
+          <div className="glass-card border border-amber-500/30 rounded-3xl p-6 lg:p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
 
             <div className="space-y-3 max-w-3xl relative z-10">
@@ -52,9 +52,9 @@ export default function WoodpeckerGuideModal({ isOpen, onClose }) {
 
           {/* The Story & Automaticity */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-3">
+            <div className="glass-card border border-brand-border rounded-3xl p-6 shadow-xl space-y-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
                   <Trophy size={18} />
                 </div>
                 <h4 className="text-base font-bold text-white tracking-tight">The 3 GM Norms in 7 Weeks</h4>
@@ -67,9 +67,9 @@ export default function WoodpeckerGuideModal({ isOpen, onClose }) {
               </p>
             </div>
 
-            <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-3">
+            <div className="glass-card border border-brand-border rounded-3xl p-6 shadow-xl space-y-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   <Brain size={18} />
                 </div>
                 <h4 className="text-base font-bold text-white tracking-tight">The Core Philosophy: Automaticity</h4>
@@ -84,7 +84,7 @@ export default function WoodpeckerGuideModal({ isOpen, onClose }) {
           </div>
 
           {/* The 7-Cycle Halving Schedule */}
-          <div className="bg-[#111728] border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4">
+          <div className="glass-card border border-brand-border rounded-3xl p-6 shadow-xl space-y-4">
             <div>
               <div className="text-xs font-mono uppercase tracking-widest text-amber-500 font-semibold mb-1">
                 Program Roadmap
@@ -93,51 +93,51 @@ export default function WoodpeckerGuideModal({ isOpen, onClose }) {
                 The 7-Cycle Time-Halving Schedule
               </h4>
               <p className="text-xs text-slate-400 mt-0.5">
-                Select your puzzle set (such as Easy 222 or the full master corpus) and halve your target time on every cycle pass.
+                Master all 700 curated puzzles and halve your target time on every cycle pass.
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-mono">
-              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+              <div className="p-4 rounded-2xl bg-brand-surface/80 border border-brand-border space-y-2">
                 <div className="flex justify-between items-center text-amber-400 font-bold">
                   <span>CYCLE 1</span>
-                  <span className="text-[10px] text-slate-500">~28 Days</span>
+                  <span className="text-xs text-slate-400">~28 Days</span>
                 </div>
                 <div className="font-sans font-bold text-white text-xs">The Foundation Pass</div>
-                <div className="font-sans text-[11px] text-slate-400">
+                <div className="font-sans text-xs text-slate-400 leading-relaxed">
                   Solve every puzzle with careful calculation. Do not guess moves.
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+              <div className="p-4 rounded-2xl bg-brand-surface/80 border border-brand-border space-y-2">
                 <div className="flex justify-between items-center text-sky-400 font-bold">
                   <span>CYCLE 2</span>
-                  <span className="text-[10px] text-slate-500">~14 Days</span>
+                  <span className="text-xs text-slate-400">~14 Days</span>
                 </div>
                 <div className="font-sans font-bold text-white text-xs">The Consolidation</div>
-                <div className="font-sans text-[11px] text-slate-400">
+                <div className="font-sans text-xs text-slate-400 leading-relaxed">
                   Target 50% faster completion. Motifs start becoming familiar.
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+              <div className="p-4 rounded-2xl bg-brand-surface/80 border border-brand-border space-y-2">
                 <div className="flex justify-between items-center text-emerald-400 font-bold">
                   <span>CYCLE 3</span>
-                  <span className="text-[10px] text-slate-500">~7 Days</span>
+                  <span className="text-xs text-slate-400">~7 Days</span>
                 </div>
                 <div className="font-sans font-bold text-white text-xs">The Acceleration</div>
-                <div className="font-sans text-[11px] text-slate-400">
+                <div className="font-sans text-xs text-slate-400 leading-relaxed">
                   Solve the entire batch within one week. Speed improves significantly.
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+              <div className="p-4 rounded-2xl bg-brand-surface/80 border border-brand-border space-y-2">
                 <div className="flex justify-between items-center text-rose-400 font-bold">
                   <span>CYCLE 4–7</span>
-                  <span className="text-[10px] text-slate-500">1–3 Days</span>
+                  <span className="text-xs text-slate-400">1–3 Days</span>
                 </div>
                 <div className="font-sans font-bold text-white text-xs">Total Mastery</div>
-                <div className="font-sans text-[11px] text-slate-400">
+                <div className="font-sans text-xs text-slate-400 leading-relaxed">
                   Solve the entire collection in a single sitting or weekend with 95%+ accuracy.
                 </div>
               </div>
@@ -146,13 +146,13 @@ export default function WoodpeckerGuideModal({ isOpen, onClose }) {
         </div>
 
         {/* Modal Footer */}
-        <div className="p-5 lg:p-6 border-t border-slate-800/80 bg-[#111728] flex items-center justify-between shrink-0">
+        <div className="p-5 lg:p-6 border-t border-brand-border bg-brand-surface flex items-center justify-between shrink-0">
           <span className="text-xs text-slate-400">
             Source: <em className="text-slate-300">The Woodpecker Method</em>, Quality Chess (2018)
           </span>
           <button
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all cursor-pointer"
+            className="px-6 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:bg-amber-400 active:scale-[0.98] transition-all cursor-pointer"
           >
             Got it, Let's Train
           </button>

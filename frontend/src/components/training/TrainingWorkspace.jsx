@@ -85,7 +85,19 @@ export default function TrainingWorkspace({
     setGame(freshGame);
     setMoveIndex(0);
     setDisplayHint('');
-    setHighlightSquares({});
+
+    // Highlight opponent's setup move if present
+    if (lesson?.metadata?.preMove && lesson.metadata.preMove.length >= 4) {
+      const fromSq = lesson.metadata.preMove.slice(0, 2);
+      const toSq = lesson.metadata.preMove.slice(2, 4);
+      setHighlightSquares({
+        [fromSq]: { backgroundColor: 'rgba(234, 179, 8, 0.35)' },
+        [toSq]: { backgroundColor: 'rgba(234, 179, 8, 0.55)' }
+      });
+    } else {
+      setHighlightSquares({});
+    }
+
     setIsRevealing(false);
     setIsSolved(false);
     setFeedback(null);
@@ -193,10 +205,25 @@ export default function TrainingWorkspace({
           moveTimerRef.current = setTimeout(() => {
             try {
               const oppMoveSan = solution[nextMoveIndex];
-              const oppExec = gameCopy.move(oppMoveSan);
+              let oppExec = null;
+              try {
+                oppExec = gameCopy.move(oppMoveSan);
+              } catch {
+                if (typeof oppMoveSan === 'string' && oppMoveSan.length >= 4) {
+                  oppExec = gameCopy.move({
+                    from: oppMoveSan.slice(0, 2),
+                    to: oppMoveSan.slice(2, 4),
+                    promotion: oppMoveSan[4] || 'q'
+                  });
+                }
+              }
 
               if (oppExec) {
                 setGame(new Chess(gameCopy.fen()));
+                setHighlightSquares({
+                  [oppExec.from]: { backgroundColor: 'rgba(234, 179, 8, 0.35)' },
+                  [oppExec.to]: { backgroundColor: 'rgba(234, 179, 8, 0.55)' }
+                });
                 if (oppExec.captured) soundManager.playCapture();
                 else if (gameCopy.inCheck()) soundManager.playCheck();
                 else soundManager.playMove();
@@ -207,6 +234,8 @@ export default function TrainingWorkspace({
                 if (afterOppIndex >= solution.length) {
                   handlePuzzleSolved();
                 }
+              } else {
+                handlePuzzleSolved();
               }
             } catch {
               handlePuzzleSolved();
@@ -352,30 +381,40 @@ export default function TrainingWorkspace({
   const activeTheme = BOARD_THEMES[selectedTheme] || BOARD_THEMES['classic-wood'];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-4 lg:py-6">
+    <div className="max-w-7xl mx-auto px-4 py-4 lg:py-6 animate-fadeIn">
       
       {/* Top Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-brand-border">
         <div className="flex items-center gap-3">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition-colors"
+              className="p-2.5 rounded-xl bg-brand-surface border border-brand-border hover:border-slate-700 text-slate-300 hover:text-white active:scale-[0.98] transition-all cursor-pointer"
               title="Return to Course"
             >
               <ArrowLeft size={18} />
             </button>
           )}
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-semibold">
-                {course?.title || 'Tactical Training'}
+                {course?.title || 'Woodpecker Method'}
               </span>
               <span className="text-xs text-slate-600">•</span>
-              <span className="text-xs text-slate-400">{chapter?.title}</span>
+              <span className="text-xs text-amber-300 font-mono font-bold">
+                {lesson?.metadata?.puzzleIndex ? `Puzzle ${lesson.metadata.puzzleIndex} / 700` : (chapter?.title || 'Woodpecker')}
+              </span>
+              {lesson?.metadata?.rating && (
+                <>
+                  <span className="text-xs text-slate-600">•</span>
+                  <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-900 text-slate-300 border border-brand-border font-semibold">
+                    ★ {lesson.metadata.rating}
+                  </span>
+                </>
+              )}
             </div>
-            <h1 className="text-lg lg:text-xl font-bold text-white tracking-tight">
-              {lesson?.title || 'Chess Position'}
+            <h1 className="text-lg lg:text-xl font-bold text-white tracking-tight mt-0.5">
+              {lesson?.title || 'Tactical Position'}
             </h1>
           </div>
         </div>
@@ -385,10 +424,10 @@ export default function TrainingWorkspace({
           {/* Sound Toggle */}
           <button
             onClick={handleToggleSound}
-            className={`p-2.5 rounded-xl border transition-colors ${
+            className={`p-2.5 rounded-xl border transition-all cursor-pointer active:scale-[0.98] ${
               settings.soundEnabled
-                ? 'bg-slate-900 border-slate-800 text-amber-400 hover:border-amber-500/50'
-                : 'bg-slate-900/50 border-slate-800 text-slate-600'
+                ? 'bg-slate-900 border-amber-500/40 text-amber-400 hover:border-amber-400'
+                : 'bg-slate-900/50 border-brand-border text-slate-500 hover:text-slate-300'
             }`}
             title={settings.soundEnabled ? 'Mute Audio' : 'Unmute Audio'}
           >
@@ -402,7 +441,7 @@ export default function TrainingWorkspace({
               setSelectedTheme(e.target.value);
               storage.updateSettings({ boardTheme: e.target.value });
             }}
-            className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-slate-700"
+            className="bg-brand-surface border border-brand-border text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500 cursor-pointer"
           >
             {Object.entries(BOARD_THEMES).map(([key, item]) => (
               <option key={key} value={key}>{item.name}</option>
@@ -412,8 +451,8 @@ export default function TrainingWorkspace({
           {/* Orientation Toggle */}
           <button
             onClick={handleFlip}
-            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition-colors"
-            title="Flip Board"
+            className="p-2.5 rounded-xl bg-brand-surface border border-brand-border text-slate-300 hover:text-white hover:border-slate-700 active:scale-[0.98] transition-all cursor-pointer"
+            title="Flip Board [F]"
           >
             <RotateCw size={16} />
           </button>
@@ -426,16 +465,19 @@ export default function TrainingWorkspace({
         {/* Left: The Chessboard */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col items-center">
           {/* Turn Indicator outside the board */}
-          <div className="w-full max-w-[540px] flex items-center justify-start mb-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono">
+          <div className="w-full max-w-[540px] flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-brand-surface border border-brand-border text-xs font-mono shadow-sm">
               <span className={`w-2.5 h-2.5 rounded-full ${game.turn() === 'w' ? 'bg-amber-100 ring-2 ring-amber-400' : 'bg-slate-950 ring-2 ring-slate-400'}`} />
               <span className="text-slate-200 font-bold uppercase tracking-wide">
                 {game.turn() === 'w' ? 'White to Move' : 'Black to Move'}
               </span>
             </div>
+            <span className="text-xs font-mono text-slate-400">
+              Flip [F] • Hint [Space]
+            </span>
           </div>
 
-          <div className="w-full max-w-[540px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800/90 relative bg-slate-900">
+          <div className="w-full max-w-[540px] aspect-square rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800/90 ring-1 ring-white/10 relative bg-slate-950">
             <Chessboard
               position={game.fen()}
               onPieceDrop={onDrop}
@@ -455,12 +497,12 @@ export default function TrainingWorkspace({
           {/* Notification / Feedback Banner */}
           {feedback && (
             <div
-              className={`p-4 rounded-xl border flex items-start gap-3 transition-all ${
+              className={`p-4 rounded-2xl border flex items-start gap-3 transition-all animate-fadeIn ${
                 feedback.type === 'success'
-                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
                   : feedback.type === 'error'
-                  ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-                  : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-200'
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                  : 'bg-sky-500/10 border-sky-500/30 text-sky-200'
               }`}
             >
               {feedback.type === 'success' ? (
@@ -468,15 +510,15 @@ export default function TrainingWorkspace({
               ) : feedback.type === 'error' ? (
                 <AlertCircle className="text-rose-400 shrink-0 mt-0.5" size={18} />
               ) : (
-                <HelpCircle className="text-cyan-400 shrink-0 mt-0.5" size={18} />
+                <HelpCircle className="text-sky-400 shrink-0 mt-0.5" size={18} />
               )}
               <div className="text-xs font-medium leading-relaxed">{feedback.message}</div>
             </div>
           )}
 
           {/* Description & Objective Card */}
-          <div className="bg-[#111728] border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-            <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold mb-2">
+          <div className="glass-card rounded-2xl p-5 shadow-xl space-y-3">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold">
               Objective
             </h3>
             <p className="text-sm text-slate-200 leading-relaxed">
@@ -484,29 +526,29 @@ export default function TrainingWorkspace({
             </p>
 
             {/* Move Statistics */}
-            <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-800">
-              <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60">
-                <div className="text-[10px] font-mono text-slate-500 uppercase">Mistakes</div>
-                <div className={`text-base font-bold ${mistakesCount > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-brand-border">
+              <div className="bg-brand-surface/60 p-3 rounded-xl border border-brand-border/60">
+                <div className="text-xs font-mono text-slate-400 uppercase">Mistakes</div>
+                <div className={`text-base font-bold mt-0.5 ${mistakesCount > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
                   {mistakesCount}
                 </div>
               </div>
-              <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/60">
-                <div className="text-[10px] font-mono text-slate-500 uppercase">Hints Used</div>
-                <div className="text-base font-bold text-amber-400">{hintsUsed}</div>
+              <div className="bg-brand-surface/60 p-3 rounded-xl border border-brand-border/60">
+                <div className="text-xs font-mono text-slate-400 uppercase">Hints Used</div>
+                <div className="text-base font-bold text-amber-400 mt-0.5">{hintsUsed}</div>
               </div>
             </div>
           </div>
 
           {/* Unified Controls Card */}
-          <div className="bg-[#111728] border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-3">
+          <div className="glass-card rounded-2xl p-5 shadow-xl space-y-3">
             
             {/* Next Exercise Button (Appears upon solving) */}
             {isSolved && (
               <button
                 onClick={onNext}
                 disabled={!hasNext}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 hover:brightness-110 transition-all animate-fadeIn"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 hover:brightness-110 active:scale-[0.98] transition-all animate-fadeIn cursor-pointer"
               >
                 <span>Next Exercise</span>
                 <ChevronRight size={16} />
@@ -518,7 +560,7 @@ export default function TrainingWorkspace({
               <button
                 onClick={handleGetHint}
                 disabled={isSolved || isRevealing}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-medium text-xs transition-all disabled:opacity-40"
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-brand-surface border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-medium text-xs transition-all disabled:opacity-40 cursor-pointer active:scale-[0.98]"
               >
                 <Lightbulb size={14} />
                 <span>Hint</span>
@@ -527,7 +569,7 @@ export default function TrainingWorkspace({
               <button
                 onClick={handleRevealSolution}
                 disabled={isSolved || isRevealing}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-medium text-xs transition-all disabled:opacity-40"
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-brand-surface border border-brand-border text-slate-300 hover:text-white hover:border-slate-700 font-medium text-xs transition-all disabled:opacity-40 cursor-pointer active:scale-[0.98]"
               >
                 <Eye size={14} />
                 <span>Solution</span>
@@ -535,7 +577,7 @@ export default function TrainingWorkspace({
 
               <button
                 onClick={handleReset}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 text-xs transition-all"
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-brand-surface border border-brand-border text-slate-400 hover:text-slate-200 text-xs transition-all cursor-pointer active:scale-[0.98]"
               >
                 <RotateCcw size={14} />
                 <span>Reset</span>
@@ -544,7 +586,7 @@ export default function TrainingWorkspace({
 
             {/* Display Hint Box */}
             {displayHint && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-200 leading-relaxed animate-fadeIn">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-xs text-amber-200 leading-relaxed animate-fadeIn">
                 <span className="font-bold text-amber-400 mr-1.5">Hint:</span>
                 {displayHint}
               </div>
@@ -552,14 +594,14 @@ export default function TrainingWorkspace({
           </div>
 
           {/* Keyboard Shortcuts Helper */}
-          <div className="text-[11px] text-slate-500 font-mono text-center flex items-center justify-center gap-3">
-            <span>[Space] Hint</span>
+          <div className="text-xs text-slate-400 font-mono text-center flex items-center justify-center gap-2">
+            <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-brand-border text-slate-300">[Space] Hint</span>
             <span>•</span>
-            <span>[R] Retry</span>
+            <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-brand-border text-slate-300">[R] Reset</span>
             <span>•</span>
-            <span>[F] Flip</span>
+            <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-brand-border text-slate-300">[F] Flip</span>
             <span>•</span>
-            <span>[← / →] Navigate</span>
+            <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-brand-border text-slate-300">[← / →]</span>
           </div>
 
         </div>

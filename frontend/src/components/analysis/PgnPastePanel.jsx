@@ -8,24 +8,24 @@ export default function PgnPastePanel({
   onAnalyze
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <textarea
-        rows={6}
+        rows={7}
         placeholder="Paste game PGN here (e.g. 1. e4 e5 2. Nf3 Nc6...)"
         value={pgnInput}
         onChange={(e) => setPgnInput(e.target.value)}
-        className="w-full bg-slate-900 border border-slate-700/80 text-slate-200 rounded-2xl p-3.5 text-xs font-mono focus:outline-none focus:border-blue-500 leading-relaxed"
+        className="w-full bg-brand-surface border border-brand-border text-slate-200 rounded-2xl p-4 text-xs font-mono focus:outline-none focus:border-amber-500 leading-relaxed placeholder-slate-500"
       />
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
         {sampleGames && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-mono text-slate-500">Samples:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-mono text-slate-400">Samples:</span>
             {sampleGames.kasparov && (
               <button
                 type="button"
                 onClick={() => onAnalyze(sampleGames.kasparov.pgn)}
-                className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 hover:border-amber-400 text-xs font-medium transition-all cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-brand-surface border border-brand-border text-amber-300 hover:border-amber-400 hover:text-amber-200 text-xs font-medium active:scale-[0.98] transition-all cursor-pointer"
               >
                 Kasparov's Immortal
               </button>
@@ -34,7 +34,7 @@ export default function PgnPastePanel({
               <button
                 type="button"
                 onClick={() => onAnalyze(sampleGames.opera.pgn)}
-                className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-sky-300 hover:border-sky-400 text-xs font-medium transition-all cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-brand-surface border border-brand-border text-sky-300 hover:border-sky-400 hover:text-sky-200 text-xs font-medium active:scale-[0.98] transition-all cursor-pointer"
               >
                 Morphy Opera
               </button>
@@ -46,9 +46,9 @@ export default function PgnPastePanel({
           type="button"
           onClick={() => onAnalyze(pgnInput)}
           disabled={!pgnInput.trim()}
-          className="flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 disabled:opacity-40 transition-all cursor-pointer ml-auto"
+          className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 hover:brightness-110 active:scale-[0.98] disabled:opacity-40 transition-all cursor-pointer sm:ml-auto"
         >
-          <Sparkles size={14} />
+          <Sparkles size={15} />
           <span>Analyze PGN</span>
         </button>
       </div>

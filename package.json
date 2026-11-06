@@ -14,7 +14,7 @@
     "frontend": "vite frontend",
     "start": "node backend/index.js",
     "build": "vite build frontend",
-    "test": "node --test test/moveClassification.test.js",
+    "test": "node --test test/*.test.js",
     "lint": "eslint frontend",
     "preview": "vite preview frontend",
     "import:pgn": "node scripts/import-pgn.js",
